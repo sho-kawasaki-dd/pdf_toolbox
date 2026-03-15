@@ -10,6 +10,7 @@ from unittest.mock import MagicMock
 from PIL import Image
 from PySide6.QtWidgets import QFileDialog, QMessageBox, QFrame
 
+from view.compress.compress_view import CompressionInputItem, CompressionUiState
 from view.main_window import MainWindow, UiState
 
 
@@ -53,6 +54,14 @@ class TestMainWindowInstantiation:
         win = MainWindow()
         qtbot.addWidget(win)
         assert win.stack.currentWidget() is win.home_view
+
+    def test_can_show_compress_screen(self, qtbot):
+        win = MainWindow()
+        qtbot.addWidget(win)
+
+        win.show_compress()
+
+        assert win.stack.currentWidget() is win.compress_view
 
     def test_initial_size(self, qtbot):
         win = MainWindow()
@@ -118,6 +127,23 @@ class TestMainWindowStubs:
         qtbot.addWidget(win)
         win.schedule_focus_filename_entry()
 
+    def test_update_compression_ui(self, qtbot):
+        win = MainWindow()
+        qtbot.addWidget(win)
+
+        win.update_compression_ui(
+            CompressionUiState(
+                input_items=[CompressionInputItem(path="C:/work/sample.pdf", label="[PDF] C:/work/sample.pdf")],
+                output_dir_text="C:/out",
+                progress_value=25,
+                can_execute=True,
+            ),
+        )
+
+        assert win.compress_view.input_list.count() == 1
+        assert win.compress_view.txt_output_dir.text() == "C:/out"
+        assert win.compress_view.btn_execute.isEnabled()
+
     def test_show_info(self, qtbot, monkeypatch):
         win = MainWindow()
         qtbot.addWidget(win)
@@ -167,6 +193,17 @@ class TestMainWindowStubs:
         )
         result = win.ask_directory()
         assert result is None
+
+    def test_ask_open_files(self, qtbot, monkeypatch):
+        win = MainWindow()
+        qtbot.addWidget(win)
+        monkeypatch.setattr(
+            QFileDialog, "getOpenFileNames", lambda *a, **kw: (["a.pdf", "b.pdf"], "PDF Files (*.pdf)"),
+        )
+
+        result = win.ask_open_files("PDFファイルを選択", "PDF Files (*.pdf)")
+
+        assert result == ["a.pdf", "b.pdf"]
 
     def test_schedule(self, qtbot):
         win = MainWindow()

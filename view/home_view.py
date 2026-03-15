@@ -1,4 +1,4 @@
-"""Home screen for selecting PDF tools."""
+"""PDF ツールの機能カードを並べるホーム画面。"""
 
 from __future__ import annotations
 
@@ -9,6 +9,8 @@ from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QGridLayout, QLabel, QSizePolicy, QToolButton, QVBoxLayout, QWidget
 
+from view.font_config import make_app_font
+
 
 FEATURE_CARD_ICON_SIZE = 156
 FEATURE_CARD_MIN_WIDTH = 250
@@ -17,7 +19,7 @@ FEATURES: tuple[tuple[str, str, str, bool], ...] = (
     ("split", "pdf_splitter_icon.png", "PDF 分割", True),
     ("merge", "pdf_merger_icon.png", "PDF 結合", False),
     ("reorder", "pdf_page_reorder_icon.png", "PDF 並び替え", False),
-    ("compress", "pdf_compressor_icon.png", "PDF 圧縮", False),
+    ("compress", "pdf_compressor_icon.png", "PDF 圧縮", True),
     ("pdf-to-jpeg", "pdf2jpeg_icon.png", "PDF → JPEG", False),
 )
 
@@ -29,7 +31,7 @@ def _resource_path(relative_path: str) -> Path:
 
 
 class FeatureCardButton(QToolButton):
-    """Home screen feature card that keeps a portrait aspect ratio."""
+    """縦長カード比率を保つホーム画面用ボタン。"""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -38,6 +40,7 @@ class FeatureCardButton(QToolButton):
         self.setMinimumWidth(FEATURE_CARD_MIN_WIDTH)
         self.setMinimumHeight(self.heightForWidth(FEATURE_CARD_MIN_WIDTH))
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self.setFont(make_app_font(18, bold=True))
 
     def hasHeightForWidth(self) -> bool:
         return True
@@ -51,7 +54,7 @@ class FeatureCardButton(QToolButton):
 
 
 class HomeView(QWidget):
-    """Home screen that exposes feature cards."""
+    """利用可能な機能カードを並べて選択イベントを出す画面。"""
 
     feature_selected = Signal(str)
 
@@ -61,18 +64,20 @@ class HomeView(QWidget):
         self._build_ui()
 
     def _build_ui(self) -> None:
+        """ホーム画面のタイトルと機能カード一覧を構築する。"""
         outer = QVBoxLayout(self)
         outer.setContentsMargins(32, 32, 32, 32)
         outer.setSpacing(20)
 
         title = QLabel("PDF ツールボックス")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title.setStyleSheet("font-size: 28px; font-weight: 700;")
+        title.setFont(make_app_font(28, bold=True))
         outer.addWidget(title)
 
         subtitle = QLabel("使いたい機能を選択してください")
         subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        subtitle.setStyleSheet("color: #475569; font-size: 14px;")
+        subtitle.setFont(make_app_font(14))
+        subtitle.setStyleSheet("color: #475569;")
         outer.addWidget(subtitle)
 
         grid = QGridLayout()
@@ -84,6 +89,7 @@ class HomeView(QWidget):
         outer.addLayout(grid)
         outer.addStretch(1)
 
+        # 機能定義テーブルからカードを生成し、表示順と有効/無効を一元管理する。
         for index, (feature, icon_name, title, enabled) in enumerate(FEATURES):
             row, column = divmod(index, 3)
             self._add_card(grid, row, column, feature, icon_name, title, enabled)
@@ -98,6 +104,7 @@ class HomeView(QWidget):
         title: str,
         enabled: bool,
     ) -> None:
+        """1 枚ぶんの機能カードを生成してグリッドへ配置する。"""
         button = FeatureCardButton()
         button.setObjectName(f"{feature}_card")
         button.setText(title if enabled else f"{title}\n準備中")
@@ -112,8 +119,6 @@ class HomeView(QWidget):
             " border: 1px solid #cbd5e1;"
             " border-radius: 14px;"
             " padding: 18px 14px 20px 14px;"
-            " font-size: 18px;"
-            " font-weight: 700;"
             " color: #0f172a;"
             " qproperty-toolButtonStyle: ToolButtonTextUnderIcon;"
             "}"
@@ -122,6 +127,7 @@ class HomeView(QWidget):
             "QToolButton:disabled { color: #94a3b8; background-color: #f1f5f9; }"
         )
         if enabled:
+            # どのカードが押されたかだけを外へ出し、画面遷移判断は Coordinator に任せる。
             button.clicked.connect(lambda checked=False, name=feature: self.feature_selected.emit(name))
         self.feature_buttons[feature] = button
         grid.addWidget(button, row, column)

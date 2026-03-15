@@ -43,6 +43,9 @@ def ensure_application_font_family() -> str:
 
 def make_app_font(point_size: int, *, bold: bool = False) -> QFont:
     """アプリケーション共通フォントを生成する。"""
-    font = QFont(ensure_application_font_family(), point_size)
+    font = QFont(ensure_application_font_family())
+    # QFont のコンストラクタ引数へサイズを直接渡すより、明示的に設定した方が
+    # 画面スケーリングやテスト環境差分の影響を受けにくい。
+    font.setPointSize(max(1, point_size))
     font.setBold(bold)
     return font
