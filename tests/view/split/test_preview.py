@@ -9,8 +9,8 @@ import pytest
 from PIL import Image
 from PySide6.QtGui import QColor
 
-from view.components.preview import PreviewPanel
-from view.components.preview import _pil_to_qpixmap
+from view.split.components.preview import PreviewPanel
+from view.split.components.preview import _pil_to_qpixmap
 
 
 class TestPreviewPanel:

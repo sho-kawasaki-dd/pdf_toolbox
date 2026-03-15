@@ -1,4 +1,4 @@
-"""PDF 分割アプリケーション - エントリーポイント。
+"""PDF ツールボックス - エントリーポイント。
 
 MVP アーキテクチャに基づき、Model / View / Presenter を組み立てて起動する。
 PySide6 ベースの QApplication + QMainWindow 構成。
@@ -13,26 +13,26 @@ from pathlib import Path
 from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QIcon
 
+from presenter.app_coordinator import AppCoordinator
 from view.main_window import MainWindow
 from view.startup_splash import show_startup_splash
 from view.font_config import make_app_font
-from presenter.main_presenter import MainPresenter
 
 
 SPLASH_MIN_SECONDS = 2.0
 
 
-def _resource_path(filename: str) -> Path:
+def _resource_path(relative_path: str) -> Path:
     """開発実行と PyInstaller 実行の両方で使えるリソースパスを返す。"""
     base_dir = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
-    return base_dir / filename
+    return base_dir / relative_path
 
 
 def main() -> None:
     app = QApplication(sys.argv)
     app.setFont(make_app_font(10))
 
-    icon_path = _resource_path("pdf_splitter_icon.ico")
+    icon_path = _resource_path("assets/images/pdf_manipulator_icon.ico")
     if icon_path.exists():
         app.setWindowIcon(QIcon(str(icon_path)))
 
@@ -43,7 +43,7 @@ def main() -> None:
 
     view = MainWindow()
 
-    _presenter = MainPresenter(view)  # noqa: F841  -- View が参照を保持する
+    _coordinator = AppCoordinator(view)  # noqa: F841  -- 起動中は参照を保持する
 
     elapsed_seconds = time.perf_counter() - startup_started_at
     remaining_ms = max(0, int((SPLASH_MIN_SECONDS - elapsed_seconds) * 1000))

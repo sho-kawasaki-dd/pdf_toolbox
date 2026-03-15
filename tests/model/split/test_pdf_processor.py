@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from model.pdf_processor import PdfProcessor
-from model.split_session import SplitSession
+from model.split.pdf_processor import PdfProcessor
+from model.split.split_session import SplitSession
 
 
 class TestStartSplit:

@@ -1,69 +1,22 @@
-"""メインウィンドウ: 全コンポーネントの組み立てと Presenter 接続 (PySide6)。
-
-View 層の最上位モジュール。``UiState`` データクラスと ``MainWindow`` を提供する。
-未実装コンポーネントは no-op スタブで吸収し、Presenter は常に動作可能な状態を保つ。
-"""
+"""アプリ全体のトップレベルウィンドウ。"""
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from PySide6.QtWidgets import (
-    QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
-    QFileDialog, QMessageBox, QFrame,
+    QFileDialog,
+    QMainWindow,
+    QMessageBox,
+    QStackedWidget,
 )
 from PySide6.QtGui import QKeySequence, QShortcut
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QTimer, Qt
 from PIL import Image
 
-from view.components.preview import PreviewPanel
-from view.components.controls import NavigationBar, SplitActionBar, RightPanel
-from view.components.split_bar import SplitBar
+from view.home_view import HomeView
+from view.split.split_view import SplitView, UiState
 
-
-# ======================================================================
-# ViewModel
-# ======================================================================
-
-@dataclass
-class UiState:
-    """Presenter → View への一括 UI 更新用データ転送オブジェクト。"""
-
-    # ページ情報
-    page_info_text: str = "0 / 0"
-    zoom_info_text: str = "倍率: 100%"
-
-    # スプリットバー
-    total_pages: int = 0
-    current_page: int = 0
-    split_points: list[int] = field(default_factory=list)
-    active_section_index: int = -1
-
-    # セクション情報
-    section_info_text: str = "- / -"
-    section_range_text: str = "ページ範囲: -"
-    section_color: str = "gray"
-    section_filename: str = ""
-
-    # ボタン / コントロール状態 (True = 有効)
-    can_prev: bool = False
-    can_next: bool = False
-    can_add_split: bool = False
-    can_remove_split: bool = False
-    can_clear_split: bool = False
-    can_split_every: bool = False
-    can_execute: bool = False
-    can_open: bool = True
-    can_prev_section: bool = False
-    can_next_section: bool = False
-    can_remove_active_split: bool = False
-    can_edit_filename: bool = False
-
-
-# ======================================================================
-# メインウィンドウ
-# ======================================================================
 
 class MainWindow(QMainWindow):
     """PySide6 ベースのトップレベルウィンドウ。
@@ -74,65 +27,49 @@ class MainWindow(QMainWindow):
 
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("PDF 分割アプリケーション")
+        self.setWindowTitle("PDF ツールボックス")
         self.resize(1000, 700)
 
         self._presenter: Any = None
         self._timers: dict[str, QTimer] = {}
         self._next_timer_id: int = 0
+        self._shortcuts: list[QShortcut] = []
 
-        self._build_ui()
+        self.stack = QStackedWidget()
+        self.setCentralWidget(self.stack)
 
-    # ------------------------------------------------------------------
-    # レイアウト構築
-    # ------------------------------------------------------------------
+        self.home_view = HomeView()
+        self.split_view = SplitView()
+        self.stack.addWidget(self.home_view)
+        self.stack.addWidget(self.split_view)
+        self.stack.setCurrentWidget(self.home_view)
 
-    def _build_ui(self) -> None:
-        """中央ウィジェットとレイアウトを構築する。"""
-        central = QWidget()
-        self.setCentralWidget(central)
-        main_layout = QHBoxLayout(central)
-        main_layout.setContentsMargins(10, 10, 10, 10)
+        self._sync_split_view_aliases()
 
-        # 左ペイン
-        left_pane = QVBoxLayout()
-        self.preview = PreviewPanel()
-        self.split_bar = SplitBar()
-        self.split_action_bar = SplitActionBar()
-        self.nav_bar = NavigationBar()
-        left_pane.addWidget(self.preview, stretch=1)
-        left_pane.addWidget(self.split_bar)
-        left_pane.addWidget(self.split_action_bar)
-        left_pane.addWidget(self.nav_bar)
+        self._update_shortcuts_for_screen("home")
 
-        main_layout.addLayout(left_pane, stretch=7)
-
-        self.pane_divider = QFrame()
-        self.pane_divider.setFrameShape(QFrame.Shape.VLine)
-        self.pane_divider.setFrameShadow(QFrame.Shadow.Sunken)
-        self.pane_divider.setStyleSheet("color: #cbd5e1;")
-        main_layout.addWidget(self.pane_divider)
-
-        # 右ペイン
-        self.right_panel = RightPanel()
-        main_layout.addWidget(self.right_panel, stretch=3)
-
-    # ------------------------------------------------------------------
-    # Presenter 接続
-    # ------------------------------------------------------------------
+    def _sync_split_view_aliases(self) -> None:
+        """既存 API 互換のため SplitView の主要コンポーネントを公開する。"""
+        self.preview = self.split_view.preview
+        self.split_bar = self.split_view.split_bar
+        self.split_action_bar = self.split_view.split_action_bar
+        self.nav_bar = self.split_view.nav_bar
+        self.right_panel = self.split_view.right_panel
+        self.pane_divider = self.split_view.pane_divider
 
     def set_presenter(self, presenter: Any) -> None:
-        """全コンポーネントのイベントを Presenter に接続する。"""
+        """分割画面のイベントを Presenter に接続する。"""
         self._presenter = presenter
-        self.preview.set_presenter(presenter)
-        self.nav_bar.set_presenter(presenter)
-        self.split_action_bar.set_presenter(presenter)
-        self.split_bar.set_on_page_click(presenter.go_to_page)
-        self.right_panel.set_presenter(presenter)
+        self.split_view.set_presenter(presenter)
         self._setup_shortcuts(presenter)
 
     def _setup_shortcuts(self, presenter: Any) -> None:
-        """ウィンドウ全体のキーボードショートカットを設定する。"""
+        """分割画面表示時のみ有効なキーボードショートカットを設定する。"""
+        for shortcut in self._shortcuts:
+            shortcut.setParent(None)
+            shortcut.deleteLater()
+        self._shortcuts.clear()
+
         shortcuts = [
             ("PgUp", presenter.prev_page),
             ("PgDown", presenter.next_page),
@@ -144,36 +81,29 @@ class MainWindow(QMainWindow):
             ("Ctrl+Up", presenter.prev_section),
             ("Ctrl+Down", presenter.next_section),
         ]
-        self._shortcuts: list[QShortcut] = []
         for key_seq, slot in shortcuts:
-            sc = QShortcut(QKeySequence(key_seq), self)
+            sc = QShortcut(QKeySequence(key_seq), self.split_view)
+            sc.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
             sc.activated.connect(slot)
             self._shortcuts.append(sc)
 
-    # ------------------------------------------------------------------
-    # Presenter から呼ばれる公開メソッド
-    # ------------------------------------------------------------------
+        self._update_shortcuts_for_screen("split" if self.stack.currentWidget() is self.split_view else "home")
+
+    def _update_shortcuts_for_screen(self, screen: str) -> None:
+        enabled = screen == "split"
+        for shortcut in self._shortcuts:
+            shortcut.setEnabled(enabled)
+
+    def show_home(self) -> None:
+        self.stack.setCurrentWidget(self.home_view)
+        self._update_shortcuts_for_screen("home")
+
+    def show_split(self) -> None:
+        self.stack.setCurrentWidget(self.split_view)
+        self._update_shortcuts_for_screen("split")
 
     def update_ui(self, state: UiState) -> None:
-        """UiState に基づいて全コンポーネントの表示を一括更新する。"""
-        self.nav_bar.apply_state(state.page_info_text, state.can_prev, state.can_next)
-        self.split_bar.update_state(
-            state.total_pages, state.current_page,
-            state.split_points, state.active_section_index,
-        )
-        self.split_action_bar.apply_state(
-            state.zoom_info_text, state.can_add_split, state.can_remove_split,
-        )
-        self.right_panel.apply_state(
-            state.can_open, state.can_clear_split,
-            state.can_split_every, state.can_execute,
-        )
-        self.right_panel.section.apply_state(
-            state.section_info_text, state.section_range_text,
-            state.section_color, state.section_filename,
-            state.can_prev_section, state.can_next_section,
-            state.can_remove_active_split, state.can_edit_filename,
-        )
+        self.split_view.update_ui(state)
 
     def display_page(
         self,
@@ -181,24 +111,19 @@ class MainWindow(QMainWindow):
         target_width: int,
         target_height: int,
     ) -> None:
-        """レンダリング済み PIL Image をプレビューに表示する。"""
-        self.preview.display_image(pil_image, target_width, target_height)
+        self.split_view.display_page(pil_image, target_width, target_height)
 
     def get_preview_size(self) -> tuple[int, int]:
-        """プレビュー領域の (幅, 高さ) を返す。"""
-        return self.preview.size
+        return self.split_view.get_preview_size()
 
     def get_section_filename(self) -> str:
-        """セクションファイル名入力欄の現在のテキストを返す。"""
-        return self.right_panel.section.get_filename()
+        return self.split_view.get_section_filename()
 
     def set_section_filename(self, text: str) -> None:
-        """セクションファイル名入力欄のテキストを設定する。"""
-        self.right_panel.section.set_filename(text)
+        self.split_view.set_section_filename(text)
 
     def schedule_focus_filename_entry(self) -> None:
-        """短い遅延の後、ファイル名入力欄にフォーカスし全選択する。"""
-        QTimer.singleShot(10, self.right_panel.section.focus_and_select)
+        self.split_view.schedule_focus_filename_entry()
 
     # ------------------------------------------------------------------
     # ダイアログ

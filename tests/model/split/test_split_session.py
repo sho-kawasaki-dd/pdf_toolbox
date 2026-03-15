@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-from model.split_session import SplitSession
+from model.split.split_session import SplitSession
 
 
 # ======================================================================

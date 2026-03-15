@@ -1,4 +1,4 @@
-"""MainPresenter のテスト (Step 1.3〜 段階的に拡充)。
+"""SplitPresenter のテスト (Step 1.3〜 段階的に拡充)。
 
 View をモックして Presenter ロジックを単体テストする。
 """
@@ -6,13 +6,11 @@ View をモックして Presenter ロジックを単体テストする。
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
-from model.pdf_document import PdfDocument
-from model.split_session import SplitSession
-from presenter.main_presenter import MainPresenter
+from presenter.split_presenter import SplitPresenter
 from view.main_window import UiState
 
 
@@ -35,7 +33,7 @@ class TestOpenPdf:
     def test_open_pdf_calls_display_page(self, sample_pdf: Path):
         view = _make_mock_view()
         view.ask_open_file.return_value = str(sample_pdf)
-        presenter = MainPresenter(view)
+        presenter = SplitPresenter(view)
 
         presenter.open_pdf()
 
@@ -48,7 +46,7 @@ class TestOpenPdf:
     def test_open_pdf_calls_update_ui(self, sample_pdf: Path):
         view = _make_mock_view()
         view.ask_open_file.return_value = str(sample_pdf)
-        presenter = MainPresenter(view)
+        presenter = SplitPresenter(view)
 
         presenter.open_pdf()
 
@@ -60,7 +58,7 @@ class TestOpenPdf:
     def test_open_pdf_cancel(self):
         view = _make_mock_view()
         view.ask_open_file.return_value = None
-        presenter = MainPresenter(view)
+        presenter = SplitPresenter(view)
 
         presenter.open_pdf()
 
@@ -73,7 +71,7 @@ class TestPageNavigation:
     def test_next_page(self, sample_pdf: Path):
         view = _make_mock_view()
         view.ask_open_file.return_value = str(sample_pdf)
-        presenter = MainPresenter(view)
+        presenter = SplitPresenter(view)
         presenter.open_pdf()
         view.reset_mock()
 
@@ -85,7 +83,7 @@ class TestPageNavigation:
     def test_prev_page_at_first(self, sample_pdf: Path):
         view = _make_mock_view()
         view.ask_open_file.return_value = str(sample_pdf)
-        presenter = MainPresenter(view)
+        presenter = SplitPresenter(view)
         presenter.open_pdf()
         view.reset_mock()
 
@@ -97,7 +95,7 @@ class TestPageNavigation:
     def test_prev_page_after_next(self, sample_pdf: Path):
         view = _make_mock_view()
         view.ask_open_file.return_value = str(sample_pdf)
-        presenter = MainPresenter(view)
+        presenter = SplitPresenter(view)
         presenter.open_pdf()
         presenter.next_page()
         view.reset_mock()
@@ -113,7 +111,7 @@ class TestZoom:
     def test_zoom_in(self, sample_pdf: Path):
         view = _make_mock_view()
         view.ask_open_file.return_value = str(sample_pdf)
-        presenter = MainPresenter(view)
+        presenter = SplitPresenter(view)
         presenter.open_pdf()
         view.reset_mock()
 
@@ -126,7 +124,7 @@ class TestZoom:
     def test_zoom_out(self, sample_pdf: Path):
         view = _make_mock_view()
         view.ask_open_file.return_value = str(sample_pdf)
-        presenter = MainPresenter(view)
+        presenter = SplitPresenter(view)
         presenter.open_pdf()
         presenter.zoom_in()
         view.reset_mock()
@@ -140,7 +138,7 @@ class TestZoom:
     def test_reset_zoom(self, sample_pdf: Path):
         view = _make_mock_view()
         view.ask_open_file.return_value = str(sample_pdf)
-        presenter = MainPresenter(view)
+        presenter = SplitPresenter(view)
         presenter.open_pdf()
         presenter.zoom_in()
         view.reset_mock()
@@ -158,7 +156,7 @@ class TestSplitPoint:
     def test_add_split_point(self, sample_pdf: Path):
         view = _make_mock_view()
         view.ask_open_file.return_value = str(sample_pdf)
-        presenter = MainPresenter(view)
+        presenter = SplitPresenter(view)
         presenter.open_pdf()
         presenter.next_page()  # ページ 1 に移動（ページ 0 には分割点を置けない）
         view.reset_mock()
@@ -172,7 +170,7 @@ class TestSplitPoint:
     def test_remove_split_point(self, sample_pdf: Path):
         view = _make_mock_view()
         view.ask_open_file.return_value = str(sample_pdf)
-        presenter = MainPresenter(view)
+        presenter = SplitPresenter(view)
         presenter.open_pdf()
         presenter.next_page()
         presenter.add_split_point()
@@ -192,7 +190,7 @@ class TestSaveAndAdvanceSection:
         view = _make_mock_view()
         view.ask_open_file.return_value = str(sample_pdf)
         view.get_section_filename.return_value = "custom_name.pdf"
-        presenter = MainPresenter(view)
+        presenter = SplitPresenter(view)
         presenter.open_pdf()
         # 分割点を追加してセクションを作る
         presenter.next_page()
@@ -214,7 +212,7 @@ class TestClearSplitPoints:
         view = _make_mock_view()
         view.ask_open_file.return_value = str(sample_pdf)
         view.ask_yes_no.return_value = True
-        presenter = MainPresenter(view)
+        presenter = SplitPresenter(view)
         presenter.open_pdf()
         presenter.next_page()
         presenter.add_split_point()
@@ -230,7 +228,7 @@ class TestClearSplitPoints:
     def test_clear_cancelled(self, sample_pdf: Path):
         view = _make_mock_view()
         view.ask_open_file.return_value = str(sample_pdf)
-        presenter = MainPresenter(view)
+        presenter = SplitPresenter(view)
         presenter.open_pdf()
         presenter.next_page()
         presenter.add_split_point()
@@ -250,7 +248,7 @@ class TestExecuteSplit:
         view = _make_mock_view()
         view.ask_open_file.return_value = str(sample_pdf)
         view.ask_directory.return_value = str(tmp_path)
-        presenter = MainPresenter(view)
+        presenter = SplitPresenter(view)
         presenter.open_pdf()
         view.reset_mock()
 
@@ -264,7 +262,7 @@ class TestExecuteSplit:
         view = _make_mock_view()
         view.ask_open_file.return_value = str(sample_pdf)
         view.ask_directory.return_value = str(tmp_path)
-        presenter = MainPresenter(view)
+        presenter = SplitPresenter(view)
         presenter.open_pdf()
 
         presenter.execute_split()
@@ -279,7 +277,7 @@ class TestExecuteSplit:
         view.ask_open_file.return_value = str(sample_pdf)
         view.ask_directory.return_value = str(tmp_path)
         view.ask_ok_cancel.return_value = False
-        presenter = MainPresenter(view)
+        presenter = SplitPresenter(view)
         presenter.open_pdf()
 
         presenter.execute_split()
@@ -289,3 +287,16 @@ class TestExecuteSplit:
         presenter.on_closing()
         view.ask_ok_cancel.assert_called_once()
         view.destroy_window.assert_not_called()
+
+    def test_has_active_session_after_open(self, sample_pdf: Path):
+        view = _make_mock_view()
+        view.ask_open_file.return_value = str(sample_pdf)
+        presenter = SplitPresenter(view)
+
+        presenter.open_pdf()
+
+        assert presenter.has_active_session() is True
+
+    def test_is_busy_false_initially(self):
+        presenter = SplitPresenter(_make_mock_view())
+        assert presenter.is_busy() is False

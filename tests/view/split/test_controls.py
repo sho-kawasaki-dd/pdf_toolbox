@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from view.components.controls import (
+from view.split.components.controls import (
     NavigationBar, SplitActionBar, SectionPanel, RightPanel,
     LEFT_PANEL_BUTTON_HEIGHT, LEFT_PANEL_BUTTON_POINT_SIZE, LEFT_PANEL_LABEL_POINT_SIZE,
     RIGHT_PANEL_BUTTON_HEIGHT, RIGHT_PANEL_INPUT_HEIGHT,

@@ -1,7 +1,7 @@
 [project]
-name = "pdf-splitter"
+name = "pdf-toolbox"
 version = "0.2.0"
-description = "PDF 分割アプリケーション (PySide6)"
+description = "PDF ツールボックス (PySide6)"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [

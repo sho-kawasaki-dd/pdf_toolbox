@@ -1,3 +1,4 @@
-from presenter.main_presenter import MainPresenter
+from presenter.app_coordinator import AppCoordinator
+from presenter.split_presenter import SplitPresenter
 
-__all__ = ["MainPresenter"]
+__all__ = ["AppCoordinator", "SplitPresenter"]

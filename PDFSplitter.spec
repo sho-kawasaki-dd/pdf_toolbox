@@ -12,7 +12,13 @@ tmp_ret = collect_all('PySide6')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
 # アイコン
-datas += [('pdf_splitter_icon.ico', '.')]
+datas += [('assets/images/pdf_manipulator_icon.ico', 'assets/images')]
+datas += [('assets/images/pdf_manipulator_icon.png', 'assets/images')]
+datas += [('assets/images/pdf2jpeg_icon.png', 'assets/images')]
+datas += [('assets/images/pdf_splitter_icon.png', 'assets/images')]
+datas += [('assets/images/pdf_merger_icon.png', 'assets/images')]
+datas += [('assets/images/pdf_page_reorder_icon.png', 'assets/images')]
+datas += [('assets/images/pdf_compressor_icon.png', 'assets/images')]
 datas += [('fonts/ipaexg.ttf', 'fonts')]
 
 
@@ -36,7 +42,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='PDFSplitter',
+    name='PDFToolbox',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -47,7 +53,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=['pdf_splitter_icon.ico'],
+    icon=['assets/images/pdf_manipulator_icon.ico'],
 )
 coll = COLLECT(
     exe,
@@ -56,5 +62,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='PDFSplitter',
+    name='PDFToolbox',
 )

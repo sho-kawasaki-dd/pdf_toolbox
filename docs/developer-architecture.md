@@ -17,19 +17,21 @@
 - エントリーポイント: `main.py`
   - `MainWindow` を生成
   - 起動時スプラッシュを表示（`view/startup_splash.py`）
-  - `MainPresenter` を注入
+  - `AppCoordinator` を生成し、`SplitPresenter` を注入
   - `mainloop()` 開始
-- Presenter: `presenter/main_presenter.py`
-  - Viewイベントを受け取りModelを操作
-  - `UiState` を組み立ててViewへ一括反映
+- Presenter:
+  - `presenter/app_coordinator.py`（画面遷移、機能選択、Presenter ライフサイクル管理）
+  - `presenter/split_presenter.py`（分割機能のユースケースを担当）
 - Model:
   - `model/pdf_document.py`（PDFの読み込み/レンダリング）
-  - `model/split_session.py`（分割状態/セクション状態）
-  - `model/pdf_processor.py`（非同期分割処理）
+  - `model/split/split_session.py`（分割状態/セクション状態）
+  - `model/split/pdf_processor.py`（非同期分割処理）
 - View:
-  - `view/main_window.py`（トップレベル、Presenter接続、ダイアログ）
+  - `view/main_window.py`（トップレベル、`QStackedWidget`、ダイアログ）
+  - `view/home_view.py`（ホーム画面）
   - `view/startup_splash.py`（起動時スプラッシュ表示）
-  - `view/components/*.py`（ウィジェット群）
+  - `view/split/split_view.py`（分割画面、`UiState`）
+  - `view/split/components/*.py`（分割画面のウィジェット群）
 
 ### 1.1 依存の向き
 
@@ -41,38 +43,42 @@
 ### 1.2 プロジェクトツリー
 
 ```text
-pdf_splitter_customtkinter/
+pdf_manipulator/
 ├─ main.py
 ├─ PDFSplitter.spec
 ├─ pyproject.toml
-├─ README.md
-├─ assets/
 ├─ docs/
 │  ├─ user-manual.md
 │  ├─ keyboard-shortcuts.md
 │  └─ developer-architecture.md
 ├─ model/
 │  ├─ pdf_document.py
-│  ├─ pdf_processor.py
-│  └─ split_session.py
+│  └─ split/
+│     ├─ pdf_processor.py
+│     └─ split_session.py
 ├─ presenter/
-│  └─ main_presenter.py
+│  ├─ app_coordinator.py
+│  └─ split_presenter.py
 └─ view/
+  ├─ home_view.py
   ├─ main_window.py
   ├─ startup_splash.py
-  └─ components/
-    ├─ controls.py
-    ├─ preview.py
-    └─ split_bar.py
+  └─ split/
+    ├─ split_view.py
+    └─ components/
+      ├─ controls.py
+      ├─ preview.py
+      └─ split_bar.py
 ```
 
 ## 2. 責務分離ルール
 
-### Presenter (`MainPresenter`)
+### Presenter (`SplitPresenter` / `AppCoordinator`)
 
 - View公開メソッドのみを呼ぶ
 - UIウィジェットの具体API（Tk/CTk）を直接触らない
 - Modelから`UiState`を生成し`update_ui()`で反映
+- `AppCoordinator` はホーム画面の選択と画面切り替えを管理する
 
 代表的な公開ハンドラ:
 
@@ -105,7 +111,7 @@ pdf_splitter_customtkinter/
 
 ## 3. 主要データ
 
-### `UiState`（`view/main_window.py`）
+### `UiState`（`view/split/split_view.py`）
 
 PresenterからViewへ渡す表示状態DTO。
 
@@ -117,7 +123,7 @@ PresenterからViewへ渡す表示状態DTO。
 運用ルール:
 
 - 表示に必要な情報は `UiState` に集約し、個別ウィジェットがModelを直接参照しない
-- 新しい表示要素を追加する場合は、`UiState` → `MainPresenter._build_ui_state()` → `MainWindow.update_ui()` の順で拡張する
+- 新しい表示要素を追加する場合は、`UiState` → `SplitPresenter._build_ui_state()` → `SplitView.update_ui()` の順で拡張する
 
 ### `sections_data`（`SplitSession`）
 
@@ -148,7 +154,7 @@ PresenterからViewへ渡す表示状態DTO。
 
 ```mermaid
 flowchart TD
-    A[User Action in View] --> B[MainPresenter handler]
+  A[User Action in SplitView] --> B[SplitPresenter handler]
     B --> C{Model state change?}
     C -->|Yes| D[SplitSession updates state]
     C -->|No| E[Keep current state]
@@ -156,10 +162,10 @@ flowchart TD
     E --> F
     F -->|Yes| G[PdfDocument.render_page_image]
     F -->|No| H[Skip render]
-    G --> I[MainWindow.display_page]
-    H --> J[MainPresenter._build_ui_state]
+  G --> I[SplitView.display_page]
+  H --> J[SplitPresenter._build_ui_state]
     I --> J
-    J --> K[MainWindow.update_ui]
+  J --> K[SplitView.update_ui]
 ```
 
 対応メソッド例:
@@ -177,14 +183,14 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[MainPresenter.execute_split] --> B[View.ask_directory]
+  A[SplitPresenter.execute_split] --> B[View.ask_directory]
     B --> C[SplitSession.collect_split_jobs]
     C --> D[PdfProcessor.start_split]
     D --> E[Worker Thread _split_worker]
     E --> F{Success or Error}
     F -->|Success| G[result_queue type=success]
     F -->|Error| H[result_queue type=error]
-    G --> I[MainPresenter._poll_split_results]
+  G --> I[SplitPresenter._poll_split_results]
     H --> I
     I --> J[MainWindow.show_info/show_error]
     I --> K[MainWindow.update_ui]
@@ -192,8 +198,23 @@ flowchart TD
 
 補足:
 
-- `MainPresenter` が `schedule(100, _poll_split_results)` でポーリング
+- `SplitPresenter` が `schedule(100, _poll_split_results)` でポーリング
 - 実行中フラグは `PdfProcessor.is_splitting`
+
+### 4.4 画面遷移フロー
+
+```mermaid
+flowchart TD
+  A[HomeView] -->|PDF 分割| B[AppCoordinator]
+  B --> C[MainWindow.show_split]
+  C --> D[SplitView]
+  D -->|ホームへ戻る| B
+  B --> E{Busy or active session?}
+  E -->|Busy| F[show_info]
+  E -->|Need confirm| G[ask_yes_no]
+  E -->|OK| H[MainWindow.show_home]
+  G -->|OK| H
+```
 
 実装上のポイント:
 
@@ -212,9 +233,9 @@ flowchart TD
 
 ## 5. キーバインド責務
 
-- プレビュー上キー: `view/components/preview.py`
-- ファイル名入力欄キー: `view/components/controls.py`（`SectionPanel`）
-- 全体キー: `view/main_window.py` の `bind_all`
+- プレビュー上キー: `view/split/components/preview.py`
+- ファイル名入力欄キー: `view/split/components/controls.py`（`SectionPanel`）
+- 全体キー: `view/main_window.py` の `QShortcut`
 
 実装を変更した場合は、`docs/keyboard-shortcuts.md` も更新してください。
 
@@ -226,7 +247,7 @@ flowchart TD
 
 ## 6. 拡張時の指針
 
-- 新しい機能はまず `MainPresenter` のユースケース単位で追加
+- 新しい機能はまず各機能 Presenter のユースケース単位で追加
 - 状態が増える場合は `SplitSession` / `UiState` に明示的に反映
 - 非同期処理を増やす場合は `PdfProcessor` に閉じ込め、Viewに直接スレッドを持ち込まない
 - Viewコンポーネントは表示責務に限定し、業務ロジックを置かない

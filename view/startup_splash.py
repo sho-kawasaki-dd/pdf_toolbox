@@ -11,17 +11,17 @@ from PySide6.QtCore import Qt
 from view.font_config import make_app_font
 
 
-SPLASH_MIN_WIDTH = 420
-SPLASH_MIN_HEIGHT = 260
-SPLASH_MAX_WIDTH = 720
-SPLASH_MAX_HEIGHT = 420
+SPLASH_MIN_WIDTH = 560
+SPLASH_MIN_HEIGHT = 340
+SPLASH_MAX_WIDTH = 920
+SPLASH_MAX_HEIGHT = 540
 PREFERRED_SPLASH_ICON_SIZE = 256
 
 
 def _compute_splash_size(screen_width: int, screen_height: int) -> tuple[int, int]:
     """画面解像度に応じたスプラッシュサイズを返す。"""
-    width = max(SPLASH_MIN_WIDTH, min(SPLASH_MAX_WIDTH, int(screen_width * 0.28)))
-    height = max(SPLASH_MIN_HEIGHT, min(SPLASH_MAX_HEIGHT, int(screen_height * 0.24)))
+    width = max(SPLASH_MIN_WIDTH, min(SPLASH_MAX_WIDTH, int(screen_width * 0.36)))
+    height = max(SPLASH_MIN_HEIGHT, min(SPLASH_MAX_HEIGHT, int(screen_height * 0.31)))
     return width, height
 
 
@@ -107,7 +107,7 @@ def show_startup_splash(icon_path: Path) -> QSplashScreen:
 
     painter.setPen(QColor("#0f172a"))
     painter.setFont(make_app_font(max(18, splash_height // 12), bold=True))
-    painter.drawText(title_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, "PDF Splitter")
+    painter.drawText(title_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, "PDF Toolbox")
 
     painter.setPen(QColor("#475569"))
     painter.setFont(make_app_font(max(10, splash_height // 24)))
@@ -129,4 +129,4 @@ def _draw_fallback_text(painter: QPainter, pixmap: QPixmap) -> None:
     fallback_rect = pixmap.rect().adjusted(24, 24, -24, -24)
     painter.setPen(QColor("#334155"))
     painter.setFont(make_app_font(18, bold=True))
-    painter.drawText(fallback_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop, "PDF Splitter")
+    painter.drawText(fallback_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop, "PDF Toolbox")

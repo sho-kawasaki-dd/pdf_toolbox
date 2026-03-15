@@ -1,21 +1,15 @@
-"""Model と View を調停する Presenter。
-
-ドメインロジック（Model）と描画（View）のいずれにも依存するが、
-GUI フレームワークのウィジェット API を直接呼ぶことはない。
-View が公開するメソッド（``update_ui``, ``display_page`` など）と
-ダイアログラッパー（``show_info``, ``ask_yes_no`` など）のみを使用する。
-"""
+"""Model と分割画面 View を調停する Presenter。"""
 
 from __future__ import annotations
 
 from model.pdf_document import PdfDocument
-from model.split_session import SplitSession
-from model.pdf_processor import PdfProcessor
+from model.split.split_session import SplitSession
+from model.split.pdf_processor import PdfProcessor
 from view.main_window import MainWindow, UiState
-from view.components.split_bar import SECTION_COLORS
+from view.split.components.split_bar import SECTION_COLORS
 
 
-class MainPresenter:
+class SplitPresenter:
     """View からのイベントを受け取り、Model を操作し、View を更新する。"""
 
     def __init__(self, view: MainWindow) -> None:
@@ -27,6 +21,14 @@ class MainPresenter:
 
         # View にこの Presenter を接続
         self._view.set_presenter(self)
+
+    def has_active_session(self) -> bool:
+        """PDF を開いた分割セッションが存在するかを返す。"""
+        return self._doc.is_open
+
+    def is_busy(self) -> bool:
+        """分割処理の実行中かを返す。"""
+        return self._processor.is_splitting
 
     # ==================================================================
     # PDF を開く / 閉じる

@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 from PySide6.QtCore import Qt, QPointF
 from PySide6.QtGui import QMouseEvent
 
-from view.components.split_bar import SplitBar
+from view.split.components.split_bar import SplitBar
 
 
 class TestSplitBar:

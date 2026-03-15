@@ -30,7 +30,7 @@ wheels = [
 ]
 
 [[package]]
-name = "pdf-splitter"
+name = "pdf-toolbox"
 version = "0.2.0"
 source = { virtual = "." }
 dependencies = [

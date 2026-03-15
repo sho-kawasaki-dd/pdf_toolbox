@@ -47,7 +47,12 @@ class TestMainWindowInstantiation:
     def test_can_instantiate(self, qtbot):
         win = MainWindow()
         qtbot.addWidget(win)
-        assert win.windowTitle() == "PDF 分割アプリケーション"
+        assert win.windowTitle() == "PDF ツールボックス"
+
+    def test_starts_on_home_screen(self, qtbot):
+        win = MainWindow()
+        qtbot.addWidget(win)
+        assert win.stack.currentWidget() is win.home_view
 
     def test_initial_size(self, qtbot):
         win = MainWindow()
