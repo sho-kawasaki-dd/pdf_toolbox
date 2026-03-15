@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>keyboard-shortcuts</title>
+  <style>
+    /* Default styles provided by pandoc.
+    ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+    */
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+  </style>
+  <link rel="stylesheet" href="../github-markdown.css" />
+</head>
+<body>
+<h1 id="キーボードショートカット">キーボードショートカット</h1>
+<p>この一覧は実装されているキー操作のみを記載しています。</p>
+<h2 id="使い方の前提">0. 使い方の前提</h2>
+<ul>
+<li>同じキーでも、フォーカス位置（プレビュー / ファイル名入力欄 /
+画面全体）で動作が異なります</li>
+<li>優先順位は、一般的に「入力欄のイベント」→「プレビューのイベント」→「画面全体のイベント」です</li>
+<li>分割処理実行中は、ほとんどの操作が無効化されます</li>
+</ul>
+<h2 id="プレビュー上で使えるキー">1. プレビュー上で使えるキー</h2>
+<table>
+<thead>
+<tr>
+<th>キー</th>
+<th>動作</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>PageUp</code></td>
+<td>1ページ戻る</td>
+</tr>
+<tr>
+<td><code>PageDown</code></td>
+<td>1ページ進む</td>
+</tr>
+<tr>
+<td><code>Ctrl + PageUp</code></td>
+<td>10ページ戻る</td>
+</tr>
+<tr>
+<td><code>Ctrl + PageDown</code></td>
+<td>10ページ進む</td>
+</tr>
+<tr>
+<td><code>Home</code></td>
+<td>先頭ページへ移動</td>
+</tr>
+<tr>
+<td><code>End</code></td>
+<td>最終ページへ移動</td>
+</tr>
+<tr>
+<td><code>Enter</code></td>
+<td>現在ページに分割点を追加</td>
+</tr>
+<tr>
+<td><code>Delete</code></td>
+<td>現在ページの分割点を削除</td>
+</tr>
+<tr>
+<td><code>Shift + Enter</code></td>
+<td>分割を実行</td>
+</tr>
+<tr>
+<td><code>z</code></td>
+<td>ズームイン</td>
+</tr>
+<tr>
+<td><code>Z (Shift + z)</code></td>
+<td>ズームアウト</td>
+</tr>
+<tr>
+<td><code>d</code></td>
+<td>ズームを100%に戻す</td>
+</tr>
+</tbody>
+</table>
+<p>補足:</p>
+<ul>
+<li><code>Enter</code> は「分割点を追加」、<code>Shift + Enter</code>
+は「分割実行」です</li>
+<li>ズーム操作はプレビュー領域にフォーカスがあるときのみ有効です</li>
+</ul>
+<h2 id="ファイル名入力欄で使えるキー">2.
+ファイル名入力欄で使えるキー</h2>
+<table>
+<thead>
+<tr>
+<th>キー</th>
+<th>動作</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Tab</code></td>
+<td>ファイル名を保存して次セクションへ移動</td>
+</tr>
+<tr>
+<td><code>Enter</code></td>
+<td>ファイル名を保存して次セクションへ移動</td>
+</tr>
+<tr>
+<td><code>Shift + Enter</code></td>
+<td>分割を実行</td>
+</tr>
+<tr>
+<td><code>Delete</code></td>
+<td>現在セクションの開始分割点を削除</td>
+</tr>
+</tbody>
+</table>
+<p>※
+入力欄からフォーカスが外れたとき（FocusOut）も、ファイル名は保存されます。</p>
+<p>補足:</p>
+<ul>
+<li><code>Enter</code> と <code>Tab</code>
+はどちらも「保存して次へ」の同じ動作です</li>
+<li>連続入力では <code>Enter</code>
+連打でセクションを順に進められます</li>
+</ul>
+<h2 id="グローバルキー画面全体">3. グローバルキー（画面全体）</h2>
+<table>
+<thead>
+<tr>
+<th>キー</th>
+<th>動作</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Shift + Enter</code></td>
+<td>分割を実行</td>
+</tr>
+<tr>
+<td><code>Ctrl + ↑</code></td>
+<td>前のセクションへ移動</td>
+</tr>
+<tr>
+<td><code>Ctrl + ↓</code></td>
+<td>次のセクションへ移動</td>
+</tr>
+</tbody>
+</table>
+<p>補足:</p>
+<ul>
+<li>グローバルキーは <code>bind_all</code> で登録されています</li>
+<li>入力欄やプレビュー側で同じキーが処理される場合は、そちらが優先されることがあります</li>
+</ul>
+<h2 id="補足">4. 補足</h2>
+<ul>
+<li>テンキーの <code>Enter</code> にも対応しています</li>
+<li><code>Z</code> は <code>Shift + z</code> と同義です</li>
+<li>誤操作を防ぐには、実行前にプレビュー側へ一度クリックしてフォーカスを明示してください</li>
+</ul>
+<h2 id="実務でよく使う組み合わせ">5. 実務でよく使う組み合わせ</h2>
+<ul>
+<li>ページ確認しながら分割点を置く
+<ul>
+<li><code>PageDown</code> → <code>Enter</code> を繰り返す</li>
+</ul></li>
+<li>セクション名を素早く付ける
+<ul>
+<li>入力 → <code>Enter</code>（次セクションへ）</li>
+</ul></li>
+<li>最終確認後に実行
+<ul>
+<li><code>Ctrl + ↑/↓</code> でセクション移動 →
+<code>Shift + Enter</code></li>
+</ul></li>
+</ul>
+</body>
+</html>
