@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 from PySide6.QtCore import QSize, Qt, Signal
-from PySide6.QtGui import QIcon
+from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import QGridLayout, QLabel, QSizePolicy, QToolButton, QVBoxLayout, QWidget
 
 from view.font_config import make_app_font
@@ -14,6 +14,7 @@ from view.font_config import make_app_font
 
 FEATURE_CARD_ICON_SIZE = 156
 FEATURE_CARD_MIN_WIDTH = 250
+MASCOT_IMAGE_NAME = "pdf_manipulator_icon.png"
 
 FEATURES: tuple[tuple[str, str, str, bool], ...] = (
     ("split", "pdf_splitter_icon.png", "PDF 分割", True),
@@ -53,6 +54,66 @@ class FeatureCardButton(QToolButton):
         return QSize(width, self.heightForWidth(width))
 
 
+class MascotCard(QWidget):
+    """ホーム画面右下に表示する装飾用のマスコットカード。"""
+
+    def __init__(self, pixmap: QPixmap, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("mascot_card")
+        self.setMinimumWidth(FEATURE_CARD_MIN_WIDTH)
+        self.setMinimumHeight(self.heightForWidth(FEATURE_CARD_MIN_WIDTH))
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self.setStyleSheet(
+            "QWidget#mascot_card {"
+            " background-color: #f8fafc;"
+            " border: 1px solid #cbd5e1;"
+            " border-radius: 14px;"
+            "}"
+        )
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setSpacing(0)
+
+        self.image_label = QLabel()
+        self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.image_label.setScaledContents(False)
+        self.image_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        layout.addWidget(self.image_label)
+
+        self._source_pixmap = pixmap
+        self._update_pixmap()
+
+    def hasHeightForWidth(self) -> bool:
+        return True
+
+    def heightForWidth(self, width: int) -> int:
+        return max(280, int(width * 1.12))
+
+    def sizeHint(self):
+        width = max(FEATURE_CARD_MIN_WIDTH, super().sizeHint().width())
+        return QSize(width, self.heightForWidth(width))
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._update_pixmap()
+
+    def _update_pixmap(self) -> None:
+        if self._source_pixmap.isNull():
+            self.image_label.clear()
+            return
+
+        available_width = max(1, self.width() - 36)
+        available_height = max(1, self.height() - 36)
+        scaled = self._source_pixmap.scaled(
+            available_width,
+            available_height,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        self.image_label.setPixmap(scaled)
+
+
 class HomeView(QWidget):
     """利用可能な機能カードを並べて選択イベントを出す画面。"""
 
@@ -61,6 +122,7 @@ class HomeView(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.feature_buttons: dict[str, QPushButton] = {}
+        self.mascot_card: MascotCard | None = None
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -93,6 +155,10 @@ class HomeView(QWidget):
         for index, (feature, icon_name, title, enabled) in enumerate(FEATURES):
             row, column = divmod(index, 3)
             self._add_card(grid, row, column, feature, icon_name, title, enabled)
+
+        mascot_index = len(FEATURES)
+        mascot_row, mascot_column = divmod(mascot_index, 3)
+        self._add_mascot_card(grid, mascot_row, mascot_column)
 
     def _add_card(
         self,
@@ -135,3 +201,13 @@ class HomeView(QWidget):
     def _load_feature_icon(self, icon_name: str) -> QIcon:
         icon_path = _resource_path(f"assets/images/{icon_name}")
         return QIcon(str(icon_path)) if icon_path.exists() else QIcon()
+
+    def _add_mascot_card(self, grid: QGridLayout, row: int, column: int) -> None:
+        """ホーム画面右下の空きセルにマスコット画像を配置する。"""
+        pixmap = self._load_pixmap(MASCOT_IMAGE_NAME)
+        self.mascot_card = MascotCard(pixmap)
+        grid.addWidget(self.mascot_card, row, column)
+
+    def _load_pixmap(self, image_name: str) -> QPixmap:
+        image_path = _resource_path(f"assets/images/{image_name}")
+        return QPixmap(str(image_path)) if image_path.exists() else QPixmap()

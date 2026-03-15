@@ -69,12 +69,28 @@ class TestHomeView:
         assert not view.feature_buttons["reorder"].icon().isNull()
         assert not view.feature_buttons["compress"].icon().isNull()
         assert not view.feature_buttons["pdf-to-jpeg"].icon().isNull()
+        assert view.mascot_card is not None
+        assert view.mascot_card.objectName() == "mascot_card"
+        assert view.mascot_card.image_label.pixmap() is not None
+        assert not view.mascot_card.image_label.pixmap().isNull()
 
     def test_pdf_to_jpeg_card_has_expected_label(self, qtbot):
         view = HomeView()
         qtbot.addWidget(view)
 
         assert "PDF → JPEG" in view.feature_buttons["pdf-to-jpeg"].text()
+
+    def test_mascot_card_is_added_to_bottom_right_slot(self, qtbot):
+        view = HomeView()
+        qtbot.addWidget(view)
+
+        layout_item = view.layout().itemAt(2)
+        grid = layout_item.layout()
+
+        assert view.mascot_card is not None
+        assert grid.indexOf(view.mascot_card) >= 0
+        row, column, _, _ = grid.getItemPosition(grid.indexOf(view.mascot_card))
+        assert (row, column) == (1, 2)
 
     def test_cards_keep_portrait_ratio(self, qtbot):
         view = HomeView()
