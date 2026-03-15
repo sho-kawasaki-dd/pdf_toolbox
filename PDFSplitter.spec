@@ -6,9 +6,14 @@ datas = []
 binaries = []
 hiddenimports = []
 binaries += collect_dynamic_libs('pymupdf')
-tmp_ret = collect_all('customtkinter')
+
+# PySide6 プラグインとデータファイルを収集
+tmp_ret = collect_all('PySide6')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+
+# アイコン
 datas += [('pdf_splitter_icon.ico', '.')]
+datas += [('fonts/ipaexg.ttf', 'fonts')]
 
 
 a = Analysis(

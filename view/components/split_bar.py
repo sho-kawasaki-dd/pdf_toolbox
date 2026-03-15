@@ -1,10 +1,17 @@
-"""色分けされた分割プログレスバーウィジェット。"""
+"""色分けされた分割プログレスバーウィジェット (PySide6)。
+
+セクションごとの色定数は Presenter からも参照されるため、モジュールレベルで定義する。
+``SplitBar`` は QPainter で描画し、クリック/ドラッグでページ移動を行う。
+"""
 
 from __future__ import annotations
 
-import tkinter as tk
+from typing import Any, Callable
 
-import customtkinter as ctk
+from PySide6.QtWidgets import QWidget
+from PySide6.QtGui import QPainter, QColor, QPen, QPolygonF, QBrush
+from PySide6.QtCore import Qt, QPointF
+
 
 SECTION_COLORS: list[str] = [
     "#3498db",
@@ -16,32 +23,29 @@ SECTION_COLORS: list[str] = [
 ]
 
 
-class CustomSplitBar(tk.Canvas):
-    """標準の tk.Canvas を使って色分けされたバーを描画する。"""
+class SplitBar(QWidget):
+    """ページ位置と分割点を視覚化するプログレスバー。
 
-    def __init__(self, master: ctk.CTkFrame, **kwargs) -> None:
-        bg_color = master.cget("fg_color")
-        if isinstance(bg_color, (tuple, list)):
-            mode = ctk.get_appearance_mode()
-            bg_color = bg_color[0] if mode == "Light" else bg_color[1]
+    ``update_state`` でデータを受け取り ``paintEvent`` で QPainter 描画する。
+    クリック / ドラッグでページ移動コールバックを発火する。
+    """
 
-        super().__init__(master, height=30, bg=bg_color, highlightthickness=0, **kwargs)
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setFixedHeight(30)
+        self.setMouseTracking(False)
 
         self.total_pages: int = 0
         self.current_page: int = 0
         self.split_points: list[int] = []
         self.active_section_index: int = -1
-        self._on_page_click = None  # set via set_on_page_click
-
-        self.bind("<Configure>", self._on_resize)
-        self.bind("<Button-1>", self._on_click)
-        self.bind("<B1-Motion>", self._on_drag)
+        self._on_page_click: Callable[[int], None] | None = None
 
     # ------------------------------------------------------------------
     # 公開メソッド
     # ------------------------------------------------------------------
 
-    def set_on_page_click(self, callback) -> None:
+    def set_on_page_click(self, callback: Callable[[int], None]) -> None:
         """ページクリック時のコールバックを設定する。"""
         self._on_page_click = callback
 
@@ -52,90 +56,101 @@ class CustomSplitBar(tk.Canvas):
         splits: list[int],
         active_section_index: int = -1,
     ) -> None:
+        """描画状態を更新して再描画をスケジュールする。"""
         self.total_pages = total
         self.current_page = current
         self.split_points = sorted(splits)
         self.active_section_index = active_section_index
-        self._draw()
+        self.update()
 
     # ------------------------------------------------------------------
-    # イベントハンドラ
+    # マウスイベント
     # ------------------------------------------------------------------
 
-    def _on_resize(self, event) -> None:
-        self._draw()
-
-    def _event_to_page(self, event) -> int | None:
+    def _event_to_page(self, x: int) -> int | None:
+        """マウス x 座標を 0-based ページインデックスに変換する。"""
         if self.total_pages <= 0:
             return None
-        width = self.winfo_width()
-        if width <= 1:
+        w = self.width()
+        if w <= 1:
             return None
-        x_pos = min(max(event.x, 0), width - 1)
-        target_page = int((x_pos / width) * self.total_pages)
-        return min(max(target_page, 0), self.total_pages - 1)
+        x_clamped = min(max(x, 0), w - 1)
+        page = int((x_clamped / w) * self.total_pages)
+        return min(max(page, 0), self.total_pages - 1)
 
-    def _on_click(self, event) -> None:
-        page = self._event_to_page(event)
+    def mousePressEvent(self, event) -> None:
+        """クリックでページ移動コールバックを発火する。"""
+        page = self._event_to_page(int(event.position().x()))
         if page is not None and self._on_page_click:
             self._on_page_click(page)
 
-    def _on_drag(self, event) -> None:
-        page = self._event_to_page(event)
-        if page is not None and self._on_page_click:
-            self._on_page_click(page)
+    def mouseMoveEvent(self, event) -> None:
+        """ドラッグでページ移動コールバックを発火する。"""
+        if event.buttons() & Qt.MouseButton.LeftButton:
+            page = self._event_to_page(int(event.position().x()))
+            if page is not None and self._on_page_click:
+                self._on_page_click(page)
 
     # ------------------------------------------------------------------
     # 描画
     # ------------------------------------------------------------------
 
-    def _draw(self) -> None:
-        self.delete("all")
-        if self.total_pages <= 0:
+    def paintEvent(self, event) -> None:
+        """セクション色分け・分割線・アクティブ枠・現在位置インジケータを描画する。"""
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        w = self.width()
+        h = self.height()
+
+        if self.total_pages <= 0 or w <= 1:
+            painter.end()
             return
 
-        width = self.winfo_width()
-        height = self.winfo_height()
-        if width <= 1:
-            return
+        page_width = w / self.total_pages
 
-        page_width = width / self.total_pages
-
-        # 1. 分割範囲ごとの色分け描画
+        # 1. セクション色分け
         start_page = 0
         color_idx = 0
-        points = self.split_points + [self.total_pages]
-        for point in points:
-            if point <= start_page:
+        boundaries = self.split_points + [self.total_pages]
+        for boundary in boundaries:
+            if boundary <= start_page:
                 continue
             x_start = start_page * page_width
-            x_end = point * page_width
-            color = SECTION_COLORS[color_idx % len(SECTION_COLORS)]
-            self.create_rectangle(x_start, 0, x_end, height, fill=color, outline="")
-            start_page = point
+            x_end = boundary * page_width
+            color = QColor(SECTION_COLORS[color_idx % len(SECTION_COLORS)])
+            painter.fillRect(int(x_start), 0, int(x_end - x_start), h, color)
+            start_page = boundary
             color_idx += 1
 
-        # 2. 分割線の描画
+        # 2. 分割線
+        pen = QPen(QColor("black"), 2)
+        painter.setPen(pen)
         for point in self.split_points:
-            x_pos = point * page_width
-            self.create_line(x_pos, 0, x_pos, height, fill="black", width=2)
+            x = int(point * page_width)
+            painter.drawLine(x, 0, x, h)
 
-        # 3. アクティブセクションの白枠ハイライト
+        # 3. アクティブセクション枠
         if self.active_section_index >= 0:
-            boundaries = [0] + self.split_points + [self.total_pages]
-            if self.active_section_index < len(boundaries) - 1:
-                sec_start = boundaries[self.active_section_index]
-                sec_end = boundaries[self.active_section_index + 1]
-                x_s = sec_start * page_width
-                x_e = sec_end * page_width
-                self.create_rectangle(
-                    x_s + 1, 1, x_e - 1, height - 1,
-                    fill="", outline="white", width=2,
-                )
+            all_boundaries = [0] + self.split_points + [self.total_pages]
+            if self.active_section_index < len(all_boundaries) - 1:
+                sec_start = all_boundaries[self.active_section_index]
+                sec_end = all_boundaries[self.active_section_index + 1]
+                x_s = int(sec_start * page_width) + 1
+                x_e = int(sec_end * page_width) - 1
+                painter.setPen(QPen(QColor("white"), 2))
+                painter.setBrush(Qt.BrushStyle.NoBrush)
+                painter.drawRect(x_s, 1, x_e - x_s, h - 2)
 
-        # 4. 現在位置のインジケーター（逆三角形）
+        # 4. 現在位置インジケータ（逆三角形）
         cx = (self.current_page + 0.5) * page_width
-        self.create_polygon(
-            cx - 6, 0, cx + 6, 0, cx, 10,
-            fill="white", outline="black",
-        )
+        triangle = QPolygonF([
+            QPointF(cx - 6, 0),
+            QPointF(cx + 6, 0),
+            QPointF(cx, 10),
+        ])
+        painter.setPen(QPen(QColor("black"), 1))
+        painter.setBrush(QBrush(QColor("white")))
+        painter.drawPolygon(triangle)
+
+        painter.end()

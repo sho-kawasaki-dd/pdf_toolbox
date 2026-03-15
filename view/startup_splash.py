@@ -1,81 +1,132 @@
-"""起動時スプラッシュ表示ユーティリティ。"""
+"""起動時スプラッシュ表示ユーティリティ (PySide6)。"""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-import customtkinter as ctk
-from PIL import Image
+from PySide6.QtWidgets import QSplashScreen
+from PySide6.QtGui import QPixmap, QPainter, QColor, QFont, QGuiApplication, QIcon
+from PySide6.QtCore import Qt
+
+from view.font_config import make_app_font
 
 
-SPLASH_ICON_SIZE = 256
-SPLASH_PADDING = 16
+SPLASH_MIN_WIDTH = 420
+SPLASH_MIN_HEIGHT = 260
+SPLASH_MAX_WIDTH = 720
+SPLASH_MAX_HEIGHT = 420
+PREFERRED_SPLASH_ICON_SIZE = 256
 
 
-def _load_icon_image(icon_path: Path) -> Image.Image:
-    """ICO の場合は最大フレームを選び、RGBA 画像として返す。"""
-    with Image.open(icon_path) as icon_file:
-        frame_count = getattr(icon_file, "n_frames", 1)
-        largest_frame: Image.Image | None = None
-        largest_area = -1
-
-        for frame_index in range(frame_count):
-            icon_file.seek(frame_index)
-            frame_image = icon_file.copy().convert("RGBA")
-            area = frame_image.width * frame_image.height
-            if area > largest_area:
-                largest_area = area
-                largest_frame = frame_image
-
-    if largest_frame is None:
-        raise ValueError("アイコン画像を読み込めませんでした")
-    return largest_frame
+def _compute_splash_size(screen_width: int, screen_height: int) -> tuple[int, int]:
+    """画面解像度に応じたスプラッシュサイズを返す。"""
+    width = max(SPLASH_MIN_WIDTH, min(SPLASH_MAX_WIDTH, int(screen_width * 0.28)))
+    height = max(SPLASH_MIN_HEIGHT, min(SPLASH_MAX_HEIGHT, int(screen_height * 0.24)))
+    return width, height
 
 
-def _center_geometry(width: int, height: int, root: ctk.CTk) -> str:
-    """画面中央配置用の geometry 文字列を返す。"""
-    root.update_idletasks()
-    screen_width = root.winfo_screenwidth()
-    screen_height = root.winfo_screenheight()
-    x_pos = (screen_width - width) // 2
-    y_pos = (screen_height - height) // 2
-    return f"{width}x{height}+{x_pos}+{y_pos}"
+def _select_icon_size(available_sizes: list[tuple[int, int]]) -> int:
+    """`.ico` に含まれるサイズから、256px を優先して選ぶ。"""
+    if not available_sizes:
+        return PREFERRED_SPLASH_ICON_SIZE
+
+    square_sizes = sorted({min(width, height) for width, height in available_sizes if width > 0 and height > 0})
+    if not square_sizes:
+        return PREFERRED_SPLASH_ICON_SIZE
+
+    for size in square_sizes:
+        if size >= PREFERRED_SPLASH_ICON_SIZE:
+            return size
+    return square_sizes[-1]
 
 
-def show_startup_splash(root: ctk.CTk, icon_path: Path) -> ctk.CTkToplevel:
-    """アイコン画像のみの最小スプラッシュを表示する。"""
-    splash = ctk.CTkToplevel(root)
-    splash.overrideredirect(True)
-    splash.attributes("-topmost", True)
-    splash.configure(fg_color="white")
-    splash_size = SPLASH_ICON_SIZE + (SPLASH_PADDING * 2)
+def _load_splash_icon_pixmap(icon_path: Path) -> QPixmap:
+    """`.ico` からスプラッシュ向けの高解像度表現を読み込む。"""
+    icon = QIcon(str(icon_path))
+    if icon.isNull():
+        return QPixmap()
+
+    available_sizes = [(size.width(), size.height()) for size in icon.availableSizes()]
+    chosen_size = _select_icon_size(available_sizes)
+    return icon.pixmap(chosen_size, chosen_size)
+
+
+def show_startup_splash(icon_path: Path) -> QSplashScreen:
+    """画面サイズに応じたスプラッシュを表示して返す。"""
+    screen = QGuiApplication.primaryScreen()
+    if screen is not None:
+        rect = screen.availableGeometry()
+        splash_width, splash_height = _compute_splash_size(rect.width(), rect.height())
+    else:
+        splash_width, splash_height = _compute_splash_size(1920, 1080)
+
+    pixmap = QPixmap(splash_width, splash_height)
+    pixmap.fill(QColor("white"))
+
+    painter = QPainter(pixmap)
+    painter.fillRect(pixmap.rect(), QColor("#f8fafc"))
+    painter.fillRect(0, 0, splash_width, splash_height, QColor(248, 250, 252))
 
     if icon_path.exists():
-        splash.iconbitmap(str(icon_path))
-        try:
-            raw_icon = _load_icon_image(icon_path)
-            white_bg = Image.new("RGBA", raw_icon.size, "white")
-            icon_on_white = Image.alpha_composite(white_bg, raw_icon)
-            icon_image = ctk.CTkImage(
-                light_image=icon_on_white,
-                dark_image=icon_on_white,
-                size=(SPLASH_ICON_SIZE, SPLASH_ICON_SIZE),
+        icon_pixmap = _load_splash_icon_pixmap(icon_path)
+        if not icon_pixmap.isNull():
+            icon_box = min(int(splash_width * 0.32), int(splash_height * 0.62))
+            scaled = icon_pixmap.scaled(
+                icon_box,
+                icon_box,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
             )
-            icon_label = ctk.CTkLabel(
-                splash,
-                text="",
-                image=icon_image,
-                fg_color="white",
-            )
-            icon_label.pack(padx=SPLASH_PADDING, pady=SPLASH_PADDING)
-        except Exception:
-            fallback_label = ctk.CTkLabel(splash, text="PDF Splitter", fg_color="white")
-            fallback_label.pack(padx=24, pady=24)
+            margin_x = max(24, splash_width // 14)
+            icon_x = margin_x
+            icon_y = (splash_height - scaled.height()) // 2
+            painter.drawPixmap(icon_x, icon_y, scaled)
+        else:
+            _draw_fallback_text(painter, pixmap)
     else:
-        fallback_label = ctk.CTkLabel(splash, text="PDF Splitter", fg_color="white")
-        fallback_label.pack(padx=24, pady=24)
+        _draw_fallback_text(painter, pixmap)
 
-    splash.geometry(_center_geometry(splash_size, splash_size, root))
-    splash.lift()
-    splash.focus_force()
+    text_left = max(24, splash_width // 14) + min(int(splash_width * 0.32), int(splash_height * 0.62)) + 24
+    text_width = max(80, splash_width - text_left - 24)
+    title_top = max(32, splash_height // 4)
+    title_height = max(36, splash_height // 6)
+    subtitle_top = title_top + title_height + max(18, splash_height // 14)
+    subtitle_height = max(28, splash_height // 7)
+    title_rect = pixmap.rect().adjusted(
+        text_left,
+        title_top,
+        -(24),
+        -(splash_height - title_top - title_height),
+    )
+    subtitle_rect = pixmap.rect().adjusted(
+        text_left,
+        subtitle_top,
+        -(24),
+        -(splash_height - subtitle_top - subtitle_height),
+    )
+
+    painter.setPen(QColor("#0f172a"))
+    painter.setFont(make_app_font(max(18, splash_height // 12), bold=True))
+    painter.drawText(title_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, "PDF Splitter")
+
+    painter.setPen(QColor("#475569"))
+    painter.setFont(make_app_font(max(10, splash_height // 24)))
+    painter.drawText(
+        subtitle_rect,
+        Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
+        "PySide6 UI を初期化しています...",
+    )
+    painter.end()
+
+    splash = QSplashScreen(pixmap)
+    splash.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint)
+    splash.show()
     return splash
+
+
+def _draw_fallback_text(painter: QPainter, pixmap: QPixmap) -> None:
+    """アイコンが読み込めない場合のフォールバックテキストを描画する。"""
+    fallback_rect = pixmap.rect().adjusted(24, 24, -24, -24)
+    painter.setPen(QColor("#334155"))
+    painter.setFont(make_app_font(18, bold=True))
+    painter.drawText(fallback_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop, "PDF Splitter")

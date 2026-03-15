@@ -1,23 +1,25 @@
-"""メインウィンドウ: 全コンポーネントの組み立てと Presenter 接続。
+"""メインウィンドウ: 全コンポーネントの組み立てと Presenter 接続 (PySide6)。
 
 View 層の最上位モジュール。``UiState`` データクラスと ``MainWindow`` を提供する。
+未実装コンポーネントは no-op スタブで吸収し、Presenter は常に動作可能な状態を保つ。
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from tkinter import filedialog, messagebox
+from typing import Any, Callable
 
-import customtkinter as ctk
+from PySide6.QtWidgets import (
+    QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
+    QFileDialog, QMessageBox, QFrame,
+)
+from PySide6.QtGui import QKeySequence, QShortcut
+from PySide6.QtCore import QTimer
 from PIL import Image
 
-from view.components.split_bar import CustomSplitBar
 from view.components.preview import PreviewPanel
 from view.components.controls import NavigationBar, SplitActionBar, RightPanel
-
-# CustomTkinter の全体設定
-ctk.set_appearance_mode("System")
-ctk.set_default_color_theme("blue")
+from view.components.split_bar import SplitBar
 
 
 # ======================================================================
@@ -63,8 +65,8 @@ class UiState:
 # メインウィンドウ
 # ======================================================================
 
-class MainWindow(ctk.CTk):
-    """CustomTkinter ベースのトップレベルウィンドウ。
+class MainWindow(QMainWindow):
+    """PySide6 ベースのトップレベルウィンドウ。
 
     コンポーネントを組み立て、Presenter にイベント接続のインターフェースを提供する。
     ドメインロジックや状態は一切持たない。
@@ -72,76 +74,81 @@ class MainWindow(ctk.CTk):
 
     def __init__(self) -> None:
         super().__init__()
-        self.title("PDF 分割アプリケーション (CustomTkinter)")
-        self.geometry("1000x700")
+        self.setWindowTitle("PDF 分割アプリケーション")
+        self.resize(1000, 700)
 
-        self._presenter = None
+        self._presenter: Any = None
+        self._timers: dict[str, QTimer] = {}
+        self._next_timer_id: int = 0
 
-        self.grid_columnconfigure(0, weight=7)
-        self.grid_columnconfigure(1, weight=3)
-        self.grid_rowconfigure(0, weight=1)
-
-        self._build_left_frame()
-        self._build_right_frame()
+        self._build_ui()
 
     # ------------------------------------------------------------------
     # レイアウト構築
     # ------------------------------------------------------------------
 
-    def _build_left_frame(self) -> None:
-        left = ctk.CTkFrame(self)
-        left.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
-        left.grid_rowconfigure(0, weight=1)
-        left.grid_columnconfigure(0, weight=1)
+    def _build_ui(self) -> None:
+        """中央ウィジェットとレイアウトを構築する。"""
+        central = QWidget()
+        self.setCentralWidget(central)
+        main_layout = QHBoxLayout(central)
+        main_layout.setContentsMargins(10, 10, 10, 10)
 
-        self.preview = PreviewPanel(left)
-        self.preview.frame.grid(row=0, column=0, sticky="nsew", pady=(0, 10))
+        # 左ペイン
+        left_pane = QVBoxLayout()
+        self.preview = PreviewPanel()
+        self.split_bar = SplitBar()
+        self.split_action_bar = SplitActionBar()
+        self.nav_bar = NavigationBar()
+        left_pane.addWidget(self.preview, stretch=1)
+        left_pane.addWidget(self.split_bar)
+        left_pane.addWidget(self.split_action_bar)
+        left_pane.addWidget(self.nav_bar)
 
-        self.split_bar = CustomSplitBar(left)
-        self.split_bar.grid(row=1, column=0, sticky="ew", pady=(0, 10))
+        main_layout.addLayout(left_pane, stretch=7)
 
-        self.navigation = NavigationBar(left)
-        self.navigation.frame.grid(row=2, column=0, sticky="ew")
+        self.pane_divider = QFrame()
+        self.pane_divider.setFrameShape(QFrame.Shape.VLine)
+        self.pane_divider.setFrameShadow(QFrame.Shadow.Sunken)
+        self.pane_divider.setStyleSheet("color: #cbd5e1;")
+        main_layout.addWidget(self.pane_divider)
 
-        self.split_action = SplitActionBar(left)
-        self.split_action.frame.grid(row=3, column=0, sticky="ew", pady=(10, 10))
-
-    def _build_right_frame(self) -> None:
-        self.right_panel = RightPanel(self)
-        self.right_panel.frame.grid(
-            row=0, column=1, sticky="nsew", padx=(0, 10), pady=10,
-        )
+        # 右ペイン
+        self.right_panel = RightPanel()
+        main_layout.addWidget(self.right_panel, stretch=3)
 
     # ------------------------------------------------------------------
     # Presenter 接続
     # ------------------------------------------------------------------
 
-    def set_presenter(self, presenter) -> None:
+    def set_presenter(self, presenter: Any) -> None:
         """全コンポーネントのイベントを Presenter に接続する。"""
         self._presenter = presenter
-        self.protocol("WM_DELETE_WINDOW", presenter.on_closing)
-
         self.preview.set_presenter(presenter)
+        self.nav_bar.set_presenter(presenter)
+        self.split_action_bar.set_presenter(presenter)
         self.split_bar.set_on_page_click(presenter.go_to_page)
-        self.navigation.set_presenter(presenter)
-        self.split_action.set_presenter(presenter)
         self.right_panel.set_presenter(presenter)
+        self._setup_shortcuts(presenter)
 
-        # グローバルキーバインド
-        self.bind_all("<Shift-Return>", self._wrap(presenter.execute_split))
-        self.bind_all("<Shift-KP_Enter>", self._wrap(presenter.execute_split))
-        self.bind_all("<Control-Up>", self._wrap(presenter.prev_section))
-        self.bind_all("<Control-Down>", self._wrap(presenter.next_section))
-        self.bind_all("<Control-KP_Up>", self._wrap(presenter.prev_section))
-        self.bind_all("<Control-KP_Down>", self._wrap(presenter.next_section))
-
-    @staticmethod
-    def _wrap(callback):
-        """callback を呼んで 'break' を返す Tk イベントハンドラを生成する。"""
-        def handler(event):
-            callback()
-            return "break"
-        return handler
+    def _setup_shortcuts(self, presenter: Any) -> None:
+        """ウィンドウ全体のキーボードショートカットを設定する。"""
+        shortcuts = [
+            ("PgUp", presenter.prev_page),
+            ("PgDown", presenter.next_page),
+            ("Ctrl+PgUp", presenter.prev_10_pages),
+            ("Ctrl+PgDown", presenter.next_10_pages),
+            ("Home", presenter.go_to_first_page),
+            ("End", presenter.go_to_last_page),
+            ("Shift+Return", presenter.execute_split),
+            ("Ctrl+Up", presenter.prev_section),
+            ("Ctrl+Down", presenter.next_section),
+        ]
+        self._shortcuts: list[QShortcut] = []
+        for key_seq, slot in shortcuts:
+            sc = QShortcut(QKeySequence(key_seq), self)
+            sc.activated.connect(slot)
+            self._shortcuts.append(sc)
 
     # ------------------------------------------------------------------
     # Presenter から呼ばれる公開メソッド
@@ -149,37 +156,23 @@ class MainWindow(ctk.CTk):
 
     def update_ui(self, state: UiState) -> None:
         """UiState に基づいて全コンポーネントの表示を一括更新する。"""
+        self.nav_bar.apply_state(state.page_info_text, state.can_prev, state.can_next)
         self.split_bar.update_state(
-            state.total_pages,
-            state.current_page,
-            state.split_points,
-            state.active_section_index,
+            state.total_pages, state.current_page,
+            state.split_points, state.active_section_index,
         )
-        self.navigation.update(
-            state.page_info_text,
-            state.can_prev,
-            state.can_next,
+        self.split_action_bar.apply_state(
+            state.zoom_info_text, state.can_add_split, state.can_remove_split,
         )
-        self.split_action.update(
-            state.zoom_info_text,
-            state.can_add_split,
-            state.can_remove_split,
+        self.right_panel.apply_state(
+            state.can_open, state.can_clear_split,
+            state.can_split_every, state.can_execute,
         )
-        self.right_panel.update(
-            state.can_open,
-            state.can_clear_split,
-            state.can_split_every,
-            state.can_execute,
-        )
-        self.right_panel.section.update(
-            state.section_info_text,
-            state.section_range_text,
-            state.section_color,
-            state.section_filename,
-            state.can_prev_section,
-            state.can_next_section,
-            state.can_remove_active_split,
-            state.can_edit_filename,
+        self.right_panel.section.apply_state(
+            state.section_info_text, state.section_range_text,
+            state.section_color, state.section_filename,
+            state.can_prev_section, state.can_next_section,
+            state.can_remove_active_split, state.can_edit_filename,
         )
 
     def display_page(
@@ -205,50 +198,87 @@ class MainWindow(ctk.CTk):
 
     def schedule_focus_filename_entry(self) -> None:
         """短い遅延の後、ファイル名入力欄にフォーカスし全選択する。"""
-        self.after(10, self.right_panel.section.focus_and_select)
+        QTimer.singleShot(10, self.right_panel.section.focus_and_select)
 
     # ------------------------------------------------------------------
     # ダイアログ
     # ------------------------------------------------------------------
 
     def show_info(self, title: str, message: str) -> None:
-        messagebox.showinfo(title, message)
+        """情報ダイアログを表示する。"""
+        QMessageBox.information(self, title, message)
 
     def show_error(self, title: str, message: str) -> None:
-        messagebox.showerror(title, message)
+        """エラーダイアログを表示する。"""
+        QMessageBox.critical(self, title, message)
 
     def ask_yes_no(self, title: str, message: str) -> bool:
-        return messagebox.askyesno(title, message)
+        """はい/いいえ確認ダイアログを表示する。"""
+        result = QMessageBox.question(
+            self, title, message,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        return result == QMessageBox.StandardButton.Yes
 
     def ask_ok_cancel(self, title: str, message: str) -> bool:
-        return messagebox.askokcancel(title, message)
+        """OK/キャンセル確認ダイアログを表示する。"""
+        result = QMessageBox.question(
+            self, title, message,
+            QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel,
+        )
+        return result == QMessageBox.StandardButton.Ok
 
     def ask_open_file(self) -> str | None:
-        path = filedialog.askopenfilename(
-            title="PDFファイルを選択",
-            filetypes=[("PDF Files", "*.pdf")],
+        """ファイル選択ダイアログを表示する。"""
+        path, _ = QFileDialog.getOpenFileName(
+            self, "PDFファイルを選択", "", "PDF Files (*.pdf)",
         )
         return path or None
 
     def ask_directory(self) -> str | None:
-        path = filedialog.askdirectory(title="保存先フォルダを選択")
+        """ディレクトリ選択ダイアログを表示する。"""
+        path = QFileDialog.getExistingDirectory(self, "保存先フォルダを選択")
         return path or None
 
     # ------------------------------------------------------------------
-    # スケジューリング
+    # スケジューリング (no-op スタブ — Step 1.8 で実装)
     # ------------------------------------------------------------------
 
-    def schedule(self, ms: int, callback) -> str:
-        """``self.after`` のラッパー。ジョブ ID を返す。"""
-        return self.after(ms, callback)
+    def schedule(self, ms: int, callback: Callable) -> str:
+        """指定ミリ秒後にコールバックを実行するタイマーを設定する。ジョブIDを返す。"""
+        self._next_timer_id += 1
+        job_id = f"timer_{self._next_timer_id}"
+
+        timer = QTimer(self)
+        timer.setSingleShot(True)
+        timer.timeout.connect(lambda: self._on_timer_fired(job_id, callback))
+        self._timers[job_id] = timer
+        timer.start(ms)
+        return job_id
 
     def cancel_schedule(self, job_id: str) -> None:
-        """``self.after_cancel`` のラッパー。"""
-        try:
-            self.after_cancel(job_id)
-        except Exception:
-            pass
+        """タイマーをキャンセルする。"""
+        timer = self._timers.pop(job_id, None)
+        if timer is not None:
+            timer.stop()
+
+    def _on_timer_fired(self, job_id: str, callback: Callable) -> None:
+        """タイマー発火時にコールバックを呼び、タイマーを辞書から除去する。"""
+        self._timers.pop(job_id, None)
+        callback()
 
     def destroy_window(self) -> None:
         """ウィンドウを破棄する。"""
-        self.destroy()
+        self.close()
+
+    # ------------------------------------------------------------------
+    # closeEvent オーバーライド
+    # ------------------------------------------------------------------
+
+    def closeEvent(self, event) -> None:
+        """ウィンドウ閉じ操作を Presenter に委譲する。"""
+        if self._presenter:
+            event.ignore()
+            self._presenter.on_closing()
+        else:
+            super().closeEvent(event)

@@ -1,7 +1,7 @@
 """Model と View を調停する Presenter。
 
 ドメインロジック（Model）と描画（View）のいずれにも依存するが、
-Tkinter / CustomTkinter のウィジェット API を直接呼ぶことはない。
+GUI フレームワークのウィジェット API を直接呼ぶことはない。
 View が公開するメソッド（``update_ui``, ``display_page`` など）と
 ダイアログラッパー（``show_info``, ``ask_yes_no`` など）のみを使用する。
 """

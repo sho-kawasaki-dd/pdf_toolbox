@@ -11,6 +11,9 @@ import fitz  # PyMuPDF
 from PIL import Image
 
 
+RENDER_OVERSAMPLE = 1.75
+
+
 class PdfDocument:
     """1つのPDFファイルを管理し、ページ画像の生成とキャッシュを行う。"""
 
@@ -89,19 +92,23 @@ class PdfDocument:
         page_rect = page.rect
 
         fit_ratio = min(frame_width / page_rect.width, frame_height / page_rect.height)
-        final_scale = max(0.01, fit_ratio * zoom)
+        logical_scale = max(0.01, fit_ratio * zoom)
+        render_scale = logical_scale * RENDER_OVERSAMPLE
 
-        cache_key = (page_idx, round(final_scale, 4))
+        cache_key = (page_idx, round(logical_scale, 4))
         cached = self._render_cache.get(cache_key)
         if cached is not None:
             self._render_cache.move_to_end(cache_key)
             return cached
 
-        pix = page.get_pixmap(matrix=fitz.Matrix(final_scale, final_scale))
+        pix = page.get_pixmap(matrix=fitz.Matrix(render_scale, render_scale))
         mode = "RGBA" if pix.alpha else "RGB"
         img = Image.frombytes(mode, (pix.width, pix.height), pix.samples)
 
-        result = (img, img.width, img.height)
+        logical_width = max(1, int(round(page_rect.width * logical_scale)))
+        logical_height = max(1, int(round(page_rect.height * logical_scale)))
+
+        result = (img, logical_width, logical_height)
         self._render_cache[cache_key] = result
         self._render_cache.move_to_end(cache_key)
 
