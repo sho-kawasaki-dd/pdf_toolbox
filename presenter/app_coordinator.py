@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from presenter.compress_presenter import CompressionPresenter
+from presenter.merge_presenter import MergePresenter
 from presenter.split_presenter import SplitPresenter
 from view.main_window import MainWindow
 
@@ -24,12 +25,14 @@ class AppCoordinator:
         # 各 Presenter はアプリ起動時に一度だけ組み立て、
         # 画面を行き来してもセッション状態を保持できるようにする。
         self._split_presenter = SplitPresenter(view)
+        self._merge_presenter = MergePresenter(view)
         self._compress_presenter = CompressionPresenter(view)
 
         # 画面固有の戻る操作とウィンドウ終了操作をここへ集約して、
         # 各 Presenter が自分の実行中状態だけを判断すれば済むようにする。
         self._view.home_view.feature_selected.connect(self._on_feature_selected)
         self._view.split_view.back_to_home_requested.connect(self.on_back_to_home)
+        self._view.merge_view.back_to_home_requested.connect(self.on_back_to_home)
         self._view.compress_view.back_to_home_requested.connect(self.on_back_to_home)
         self._view.set_close_handler(self.on_window_closing)
 
@@ -41,10 +44,18 @@ class AppCoordinator:
     def compress_presenter(self) -> CompressionPresenter:
         return self._compress_presenter
 
+    @property
+    def merge_presenter(self) -> MergePresenter:
+        return self._merge_presenter
+
     def _on_feature_selected(self, feature: str) -> None:
         """ホーム画面で選ばれた機能に応じて遷移先を切り替える。"""
         if feature == "split":
             self._view.show_split()
+            return
+
+        if feature == "merge":
+            self._view.show_merge()
             return
 
         if feature == "compress":
@@ -84,6 +95,18 @@ class AppCoordinator:
                 ):
                     return
 
+        if current_widget is self._view.merge_view:
+            if self._merge_presenter.is_busy():
+                self._view.show_info("実行中", "結合処理の実行中はホームへ戻れません。")
+                return
+
+            if self._merge_presenter.has_active_session():
+                if not self._view.ask_yes_no(
+                    "確認",
+                    "現在の結合セッションを保持したままホームへ戻ります。よろしいですか？",
+                ):
+                    return
+
         self._view.show_home()
 
     def on_window_closing(self) -> None:
@@ -93,6 +116,10 @@ class AppCoordinator:
         # 各 Presenter 側の終了確認ロジックを通す。
         if current_widget is self._view.split_view or self._split_presenter.has_active_session():
             self._split_presenter.on_closing()
+            return
+
+        if current_widget is self._view.merge_view or self._merge_presenter.has_active_session():
+            self._merge_presenter.on_closing()
             return
 
         if current_widget is self._view.compress_view or self._compress_presenter.has_active_session():

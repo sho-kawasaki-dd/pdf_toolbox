@@ -11,6 +11,7 @@ from PIL import Image
 from PySide6.QtWidgets import QFileDialog, QMessageBox, QFrame
 
 from view.compress.compress_view import CompressionInputItem, CompressionUiState
+from view.merge.merge_view import MergeInputItem, MergeUiState
 from view.main_window import MainWindow, UiState
 
 
@@ -62,6 +63,14 @@ class TestMainWindowInstantiation:
         win.show_compress()
 
         assert win.stack.currentWidget() is win.compress_view
+
+    def test_can_show_merge_screen(self, qtbot):
+        win = MainWindow()
+        qtbot.addWidget(win)
+
+        win.show_merge()
+
+        assert win.stack.currentWidget() is win.merge_view
 
     def test_initial_size(self, qtbot):
         win = MainWindow()
@@ -144,6 +153,22 @@ class TestMainWindowStubs:
         assert win.compress_view.txt_output_dir.text() == "C:/out"
         assert win.compress_view.btn_execute.isEnabled()
 
+    def test_update_merge_ui(self, qtbot):
+        win = MainWindow()
+        qtbot.addWidget(win)
+
+        win.update_merge_ui(
+            MergeUiState(
+                input_items=[MergeInputItem(path="C:/work/sample.pdf", title="sample.pdf", detail="C:/work/sample.pdf")],
+                output_path_text="C:/out/merged.pdf",
+                can_execute=True,
+            ),
+        )
+
+        assert win.merge_view.input_list.count() == 1
+        assert win.merge_view.txt_output_path.text() == "C:/out/merged.pdf"
+        assert win.merge_view.btn_execute.isEnabled()
+
     def test_show_info(self, qtbot, monkeypatch):
         win = MainWindow()
         qtbot.addWidget(win)
@@ -204,6 +229,17 @@ class TestMainWindowStubs:
         result = win.ask_open_files("PDFファイルを選択", "PDF Files (*.pdf)")
 
         assert result == ["a.pdf", "b.pdf"]
+
+    def test_ask_save_file(self, qtbot, monkeypatch):
+        win = MainWindow()
+        qtbot.addWidget(win)
+        monkeypatch.setattr(
+            QFileDialog, "getSaveFileName", lambda *a, **kw: ("merged.pdf", "PDF Files (*.pdf)"),
+        )
+
+        result = win.ask_save_file("保存先を選択", "PDF Files (*.pdf)")
+
+        assert result == "merged.pdf"
 
     def test_schedule(self, qtbot):
         win = MainWindow()
