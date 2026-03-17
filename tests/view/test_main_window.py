@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QFileDialog, QMessageBox, QFrame
 
 from view.compress.compress_view import CompressionInputItem, CompressionUiState
 from view.merge.merge_view import MergeInputItem, MergeUiState
+from view.pdf_to_jpeg.pdf_to_jpeg_view import PdfToJpegUiState
 from view.main_window import MainWindow, UiState
 
 
@@ -71,6 +72,14 @@ class TestMainWindowInstantiation:
         win.show_merge()
 
         assert win.stack.currentWidget() is win.merge_view
+
+    def test_can_show_pdf_to_jpeg_screen(self, qtbot):
+        win = MainWindow()
+        qtbot.addWidget(win)
+
+        win.show_pdf_to_jpeg()
+
+        assert win.stack.currentWidget() is win.pdf_to_jpeg_view
 
     def test_initial_size(self, qtbot):
         win = MainWindow()
@@ -168,6 +177,44 @@ class TestMainWindowStubs:
         assert win.merge_view.input_list.count() == 1
         assert win.merge_view.txt_output_path.text() == "C:/out/merged.pdf"
         assert win.merge_view.btn_execute.isEnabled()
+
+    def test_set_pdf_to_jpeg_presenter(self, qtbot):
+        win = MainWindow()
+        qtbot.addWidget(win)
+        mock_presenter = MagicMock()
+
+        win.set_pdf_to_jpeg_presenter(mock_presenter)
+
+        win.pdf_to_jpeg_view.btn_choose_pdf.click()
+        mock_presenter.choose_pdf_file.assert_called_once()
+
+    def test_update_pdf_to_jpeg_ui(self, qtbot):
+        win = MainWindow()
+        qtbot.addWidget(win)
+
+        win.update_pdf_to_jpeg_ui(
+            PdfToJpegUiState(
+                selected_pdf_text="C:/work/sample.pdf",
+                output_dir_text="C:/out",
+                output_detail_text="出力先サブフォルダ: C:/out/sample",
+                progress_value=20,
+                can_execute=True,
+                has_input_pdf=True,
+            ),
+        )
+
+        assert win.pdf_to_jpeg_view.txt_selected_pdf.text() == "C:/work/sample.pdf"
+        assert win.pdf_to_jpeg_view.txt_output_dir.text() == "C:/out"
+        assert win.pdf_to_jpeg_view.btn_execute.isEnabled()
+
+    def test_get_pdf_to_jpeg_preview_size(self, qtbot):
+        win = MainWindow()
+        qtbot.addWidget(win)
+
+        size = win.get_pdf_to_jpeg_preview_size()
+
+        assert isinstance(size, tuple)
+        assert len(size) == 2
 
     def test_show_info(self, qtbot, monkeypatch):
         win = MainWindow()

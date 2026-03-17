@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<html xmlns="http://www.w3.org/1999/xhtml">
 <head>
   <meta charset="utf-8" />
   <meta name="generator" content="pandoc" />
@@ -93,22 +93,32 @@
   <link rel="stylesheet" href="github-markdown.css" />
 </head>
 <body>
-<h1 id="pdf-splitter-customtkinter">PDF Splitter (CustomTkinter)</h1>
-<p>PDFをページ単位のセクションに分割して保存する、デスクトップアプリケーションです。<br />
+<h1 id="pdf-toolbox-pyside6">PDF Toolbox (PySide6)</h1>
+<p>PDFの分割、結合、圧縮、PDF→JPEG書き出しを行うデスクトップアプリケーションです。<br />
 <code>main.py</code> から起動し、MVP（Model / View /
 Presenter）構成で実装されています。</p>
 <p>対象読者:</p>
 <ul>
-<li>日常的にPDF分割を行うユーザー</li>
+<li>日常的にPDFを扱うユーザー</li>
 <li>アプリを改修・保守する開発者</li>
 </ul>
 <h2 id="主な機能">主な機能</h2>
 <ul>
-<li>PDFを開いてページをプレビュー</li>
-<li>分割点の追加・削除</li>
-<li>セクションごとの出力ファイル名編集</li>
-<li>全ページを1ページずつ分割</li>
-<li>バックグラウンドで分割処理を実行</li>
+<li>PDF分割:
+ページ単位のセクション分割、分割点編集、出力ファイル名編集</li>
+<li>PDF結合: 複数PDFの並び替え、サムネイル確認、1つのPDFへの結合</li>
+<li>PDF圧縮: PDF / フォルダ / ZIP を対象にしたバッチ圧縮</li>
+<li>PDF→JPEG: 単一PDFの全ページを JPEG へ一括書き出し</li>
+</ul>
+<p>PDF→JPEG の初版仕様:</p>
+<ul>
+<li>入力は単一PDFのみ</li>
+<li>対象ページは全ページ固定</li>
+<li>出力ファイル名は <code>PDF名_001.jpg</code> 形式の3桁ゼロ埋め</li>
+<li>出力先は指定フォルダ直下ではなく <code>保存先/PDF名/</code>
+サブフォルダ配下</li>
+<li>既存JPEGと衝突する場合は実行前に確認し、承認後は一括上書き</li>
+<li>透明要素を含むページは白背景へ合成して JPEG 保存</li>
 </ul>
 <h2 id="ドキュメント">ドキュメント</h2>
 <ul>
@@ -125,8 +135,8 @@ href="docs/developer-architecture.md">docs/developer-architecture.md</a></li>
 <code>keyboard-shortcuts</code></li>
 <li>改修する: <code>developer-architecture</code> →
 該当ソースコード</li>
-<li>起動表示を改修する: <code>main.py</code> と
-<code>view/startup_splash.py</code></li>
+<li>画面遷移や導線を変える: <code>presenter/app_coordinator.py</code> と
+<code>view/main_window.py</code></li>
 </ul>
 <h2 id="最短で起動するソース実行">最短で起動する（ソース実行）</h2>
 <ol type="1">
@@ -135,44 +145,46 @@ href="docs/developer-architecture.md">docs/developer-architecture.md</a></li>
 <li><p>任意の仮想環境を有効化</p></li>
 <li><p>依存をインストール</p>
 <div class="sourceCode" id="cb1"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="at">-U</span> customtkinter pillow pymupdf</span></code></pre></div></li>
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="at">-U</span> pyside6 pillow pymupdf pikepdf</span></code></pre></div></li>
 <li><p>アプリを起動</p>
 <div class="sourceCode" id="cb2"><pre
 class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ex">python</span> main.py</span></code></pre></div></li>
 <li><p>起動表示を確認</p>
 <ul>
-<li>起動時に中央へスプラッシュが表示されます（白背景 +
-アプリアイコン）</li>
+<li>起動時に中央へスプラッシュが表示されます</li>
 <li>スプラッシュは最小1秒表示され、初期化完了後に自動で閉じます</li>
+<li>ホーム画面から各機能カードへ遷移できます</li>
 </ul></li>
 </ol>
-<p>補足:</p>
-<ul>
-<li>起動後、まず「PDFを開く」で対象ファイルを選択します</li>
-<li>分割実行時に保存先フォルダを都度選択します</li>
-</ul>
+<h3 id="pdfjpeg-の最短操作">PDF→JPEG の最短操作</h3>
+<ol type="1">
+<li>ホーム画面で「PDF → JPEG」を選択</li>
+<li>単一PDFを選択し、先頭ページプレビューを確認</li>
+<li>JPEG品質を調整</li>
+<li>保存先フォルダを選択</li>
+<li>「JPEG書き出しを実行」を押す</li>
+<li><code>保存先/PDF名/PDF名_001.jpg</code>
+形式で出力されることを確認</li>
+</ol>
 <h2
 id="windowsで実行ファイルを作成するonedir">Windowsで実行ファイルを作成する（onedir）</h2>
 <ol type="1">
 <li><p>仮想環境を有効化し、依存をインストール</p>
 <div class="sourceCode" id="cb3"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="at">-U</span> customtkinter pillow pymupdf pyinstaller</span></code></pre></div></li>
-<li><p><code>PDFSplitter.spec</code> を使ってビルド</p>
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="at">-U</span> pyside6 pillow pymupdf pikepdf pyinstaller</span></code></pre></div></li>
+<li><p>PowerShell スクリプトを実行</p>
 <div class="sourceCode" id="cb4"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="ex">pyinstaller</span> <span class="at">--noconfirm</span> <span class="at">--clean</span> PDFSplitter.spec</span></code></pre></div>
-<p>または PowerShell スクリプトを実行:</p>
-<div class="sourceCode" id="cb5"><pre
-class="sourceCode powershell"><code class="sourceCode powershell"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="op">.</span>\scripts\build-exe<span class="op">.</span><span class="fu">ps1</span></span></code></pre></div></li>
+class="sourceCode powershell"><code class="sourceCode powershell"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="op">.</span>\scripts\build-exe<span class="op">.</span><span class="fu">ps1</span></span></code></pre></div></li>
 <li><p>生成物を確認</p>
 <ul>
-<li>実行ファイル: <code>dist/PDFSplitter/PDFSplitter.exe</code></li>
-<li>specファイル: <code>PDFSplitter.spec</code></li>
+<li>実行ファイル: <code>dist/</code> 配下のビルド成果物</li>
+<li>補助ファイル: ビルドスクリプトが利用する spec / assets 一式</li>
 </ul></li>
 <li><p>動作確認</p>
 <ul>
-<li><code>dist/PDFSplitter/PDFSplitter.exe</code> を起動</li>
-<li>起動時にスプラッシュが表示されることを確認</li>
-<li>「PDFを開く」→分割→保存まで実行できることを確認</li>
+<li>アプリを起動</li>
+<li>ホーム画面から各機能へ遷移できることを確認</li>
+<li>PDF→JPEG では PDF選択 → プレビュー → 保存先選択 → 実行 まで確認</li>
 </ul></li>
 </ol>
 <p>補足:</p>
@@ -189,17 +201,24 @@ class="sourceCode powershell"><code class="sourceCode powershell"><span id="cb5-
 <ul>
 <li>セキュリティ警告が表示された場合は、配布元の案内に従って実行許可を行います</li>
 <li>保存先に書き込み権限があるフォルダを選択してください</li>
+<li>PDF→JPEG では出力先サブフォルダが自動生成されます</li>
 </ul>
 <h2 id="よくあるトラブル">よくあるトラブル</h2>
 <ul>
-<li>分割時に保存エラーが出る
+<li>PDF→JPEG の実行前に上書き確認が出る
 <ul>
-<li>出力先PDFを他アプリで開いていないか確認</li>
-<li>書き込み権限のあるフォルダを選択</li>
+<li>既存の <code>PDF名_001.jpg</code>
+などが出力先サブフォルダに存在しています</li>
+<li>内容を確認し、問題なければ上書きを承認してください</li>
 </ul></li>
-<li>分割結果のファイル名が意図と異なる
+<li>JPEG出力の背景が白になる
 <ul>
-<li>無効文字や予約語が自動整形される仕様です（詳細は取扱説明書）</li>
+<li>透明要素を含むページは、初版仕様として白背景へ合成して保存します</li>
+</ul></li>
+<li>保存エラーが出る
+<ul>
+<li>出力先ファイルを他アプリで開いていないか確認</li>
+<li>書き込み権限のあるフォルダを選択</li>
 </ul></li>
 </ul>
 <h2 id="ドキュメント更新ルール">ドキュメント更新ルール</h2>
@@ -215,7 +234,7 @@ class="sourceCode powershell"><code class="sourceCode powershell"><span id="cb5-
 <p>PowerShell で次を実行すると、<code>README.md</code> と
 <code>docs/*.md</code> を <code>github-markdown.css</code> を参照する
 HTML に変換できます。</p>
-<div class="sourceCode" id="cb6"><pre
-class="sourceCode powershell"><code class="sourceCode powershell"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="op">./</span>scripts<span class="op">/</span>build-docs-html<span class="op">.</span><span class="fu">ps1</span></span></code></pre></div>
+<div class="sourceCode" id="cb5"><pre
+class="sourceCode powershell"><code class="sourceCode powershell"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="op">./</span>scripts<span class="op">/</span>build-docs-html<span class="op">.</span><span class="fu">ps1</span></span></code></pre></div>
 </body>
 </html>

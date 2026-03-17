@@ -21,8 +21,8 @@ class TestHomeView:
         assert view.feature_buttons["split"].isEnabled()
         assert view.feature_buttons["compress"].isEnabled()
         assert view.feature_buttons["merge"].isEnabled()
+        assert view.feature_buttons["pdf-to-jpeg"].isEnabled()
         assert not view.feature_buttons["reorder"].isEnabled()
-        assert not view.feature_buttons["pdf-to-jpeg"].isEnabled()
 
     def test_click_merge_emits_feature_selected(self, qtbot):
         view = HomeView()
@@ -54,11 +54,21 @@ class TestHomeView:
 
         assert received == ["compress"]
 
+    def test_click_pdf_to_jpeg_emits_feature_selected(self, qtbot):
+        view = HomeView()
+        qtbot.addWidget(view)
+        received = []
+        view.feature_selected.connect(received.append)
+
+        qtbot.mouseClick(view.feature_buttons["pdf-to-jpeg"], Qt.MouseButton.LeftButton)
+
+        assert received == ["pdf-to-jpeg"]
+
     def test_disabled_cards_show_preparing_text(self, qtbot):
         view = HomeView()
         qtbot.addWidget(view)
         assert "準備中" not in view.feature_buttons["merge"].text()
-        assert "準備中" in view.feature_buttons["pdf-to-jpeg"].text()
+        assert "準備中" not in view.feature_buttons["pdf-to-jpeg"].text()
         assert "準備中" not in view.feature_buttons["compress"].text()
 
     def test_cards_use_icon_buttons_with_text_under_icon(self, qtbot):

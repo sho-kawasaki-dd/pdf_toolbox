@@ -1,6 +1,7 @@
 from presenter.app_coordinator import AppCoordinator
 from presenter.compress_presenter import CompressionPresenter
 from presenter.merge_presenter import MergePresenter
+from presenter.pdf_to_jpeg_presenter import PdfToJpegPresenter
 from presenter.split_presenter import SplitPresenter
 
-__all__ = ["AppCoordinator", "CompressionPresenter", "MergePresenter", "SplitPresenter"]
+__all__ = ["AppCoordinator", "CompressionPresenter", "MergePresenter", "PdfToJpegPresenter", "SplitPresenter"]

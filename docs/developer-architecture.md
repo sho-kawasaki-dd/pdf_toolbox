@@ -1,6 +1,6 @@
 # 開発者向け設計ドキュメント
 
-このアプリはMVP（Model / View / Presenter）で構成されています。
+このアプリは PySide6 ベースのデスクトップアプリで、MVP（Model / View / Presenter）で構成されています。
 
 ---
 
@@ -17,35 +17,41 @@
 - エントリーポイント: `main.py`
   - `MainWindow` を生成
   - 起動時スプラッシュを表示（`view/startup_splash.py`）
-  - `AppCoordinator` を生成し、`SplitPresenter` を注入
-  - `mainloop()` 開始
+  - `AppCoordinator` を生成して各 Presenter を組み立てる
+  - Qt イベントループを開始
 - Presenter:
-  - `presenter/app_coordinator.py`（画面遷移、機能選択、Presenter ライフサイクル管理）
-  - `presenter/split_presenter.py`（分割機能のユースケースを担当）
+  - `presenter/app_coordinator.py`（画面遷移、ホーム選択、終了制御）
+  - `presenter/split_presenter.py`
+  - `presenter/merge_presenter.py`
+  - `presenter/compress_presenter.py`
+  - `presenter/pdf_to_jpeg_presenter.py`
 - Model:
-  - `model/pdf_document.py`（PDFの読み込み/レンダリング）
-  - `model/split/split_session.py`（分割状態/セクション状態）
-  - `model/split/pdf_processor.py`（非同期分割処理）
+  - `model/pdf_document.py`（プレビュー用 PDF 読み込み / レンダリング）
+  - `model/split/*`
+  - `model/merge/*`
+  - `model/compress/*`
+  - `model/pdf_to_jpeg/*`
 - View:
-  - `view/main_window.py`（トップレベル、`QStackedWidget`、ダイアログ）
+  - `view/main_window.py`（トップレベル、`QStackedWidget`、ダイアログ、タイマー）
   - `view/home_view.py`（ホーム画面）
-  - `view/startup_splash.py`（起動時スプラッシュ表示）
-  - `view/split/split_view.py`（分割画面、`UiState`）
-  - `view/split/components/*.py`（分割画面のウィジェット群）
+  - `view/startup_splash.py`
+  - `view/split/*`
+  - `view/merge/*`
+  - `view/compress/*`
+  - `view/pdf_to_jpeg/*`
 
 ### 1.1 依存の向き
 
 - `main.py` → View / Presenter を組み立てる
 - Presenter → Model と View に依存
-- Viewコンポーネント → Presenterにイベント委譲
-- Model → 外部ライブラリ（PyMuPDF, PIL）へ依存可能だが、Viewには依存しない
+- Viewコンポーネント → Presenter にイベント委譲
+- Model → 外部ライブラリ（PyMuPDF, PIL, pikepdf）へ依存可能だが、Viewには依存しない
 
-### 1.2 プロジェクトツリー
+### 1.2 プロジェクトツリー（主要部）
 
 ```text
-pdf_manipulator/
+pdf_toobox/
 ├─ main.py
-├─ PDFSplitter.spec
 ├─ pyproject.toml
 ├─ docs/
 │  ├─ user-manual.md
@@ -53,161 +59,172 @@ pdf_manipulator/
 │  └─ developer-architecture.md
 ├─ model/
 │  ├─ pdf_document.py
-│  └─ split/
-│     ├─ pdf_processor.py
-│     └─ split_session.py
+│  ├─ split/
+│  ├─ merge/
+│  ├─ compress/
+│  └─ pdf_to_jpeg/
 ├─ presenter/
 │  ├─ app_coordinator.py
-│  └─ split_presenter.py
+│  ├─ split_presenter.py
+│  ├─ merge_presenter.py
+│  ├─ compress_presenter.py
+│  └─ pdf_to_jpeg_presenter.py
 └─ view/
-  ├─ home_view.py
-  ├─ main_window.py
-  ├─ startup_splash.py
-  └─ split/
-    ├─ split_view.py
-    └─ components/
-      ├─ controls.py
-      ├─ preview.py
-      └─ split_bar.py
+   ├─ home_view.py
+   ├─ main_window.py
+   ├─ startup_splash.py
+   ├─ split/
+   ├─ merge/
+   ├─ compress/
+   └─ pdf_to_jpeg/
 ```
 
 ## 2. 責務分離ルール
 
-### Presenter (`SplitPresenter` / `AppCoordinator`)
+### Presenter
 
-- View公開メソッドのみを呼ぶ
-- UIウィジェットの具体API（Tk/CTk）を直接触らない
-- Modelから`UiState`を生成し`update_ui()`で反映
-- `AppCoordinator` はホーム画面の選択と画面切り替えを管理する
-
-代表的な公開ハンドラ:
-
-- ドキュメント: `open_pdf()`, `on_closing()`
-- ナビゲーション: `prev_page()`, `next_page()`, `go_to_page()`
-- 分割点: `add_split_point()`, `remove_split_point()`
-- 実行: `execute_split()`
+- View の公開メソッドだけを呼ぶ
+- Qt ウィジェットの詳細 API に直接依存しない
+- Model と実行状態から `UiState` を組み立てて `update_*_ui()` で反映する
+- バックグラウンド処理の結果はポーリングで受け取る
 
 ### Model
 
-- UIに依存しない純粋ロジック
-- `SplitSession` は状態遷移と入力値整形を担当
-- `PdfProcessor` はスレッド＋キューで非同期保存を担当
-
-注意点:
-
-- `SplitSession` はファイル名サニタイズ規約を保持するため、命名仕様変更はここを起点に行う
-- `PdfDocument` はレンダリングキャッシュを持つため、表示異常調査時は `cache_key` の仕様確認が有効
+- UI に依存しない純粋ロジック
+- Session は機能ごとの状態、入力整形、実行可否、命名規則を保持する
+- Processor はスレッド＋キューで非同期 I/O を担当する
 
 ### View
 
-- イベントをPresenterへ委譲
-- `UiState` を受けて表示更新
-- ファイルダイアログ/メッセージボックスを提供
+- イベントを Presenter へ委譲する
+- `UiState` を受けて表示更新する
+- ファイルダイアログ、メッセージボックス、`schedule()` を提供する
 
-注意点:
+運用上の共通ルール:
 
-- View層で業務ルール（分割可否など）を判定しない
-- View内のイベントハンドラは、可能な限りPresenter呼び出し＋`break`返却に限定する
+- 業務ルールは View に書かない
+- 非同期処理は Processor に閉じ込め、View に直接スレッドを持ち込まない
+- 画面遷移と終了時の共通ルールは `AppCoordinator` に寄せる
 
-## 3. 主要データ
+## 3. PDF→JPEG 機能の責務
 
-### `UiState`（`view/split/split_view.py`）
+### 3.1 Model
 
-PresenterからViewへ渡す表示状態DTO。
+#### `model/pdf_to_jpeg/pdf_to_jpeg_session.py`
 
-- ページ情報（`page_info_text`, `zoom_info_text`）
-- 分割バー情報（総ページ、現在ページ、分割点、アクティブセクション）
-- セクション表示情報（範囲、色、ファイル名）
-- 操作可能フラグ（ボタン有効/無効）
+- 入力PDFパス、保存先フォルダ、JPEG品質を保持
+- 出力サブフォルダ名を `PDF名` から決定
+- `PDF名_001.jpg` 形式のファイル名を生成
+- 実行前の競合候補一覧を収集
+- 進捗状態を `total_pages`, `processed_pages`, `current_page_number` で保持
 
-運用ルール:
+#### `model/pdf_to_jpeg/pdf_to_jpeg_processor.py`
 
-- 表示に必要な情報は `UiState` に集約し、個別ウィジェットがModelを直接参照しない
-- 新しい表示要素を追加する場合は、`UiState` → `SplitPresenter._build_ui_state()` → `SplitView.update_ui()` の順で拡張する
+- PyMuPDF で各ページを専用の書き出し経路でレンダリング
+- 透明要素を含むページは RGBA → 白背景 RGB に合成してから JPEG 保存
+- `success` / `failure` / `progress` / `finished` をキューへ積む
+- 実行前の競合検出結果を見て、未承認の上書きを拒否する
 
-### `sections_data`（`SplitSession`）
+### 3.2 Preview 基盤
 
-各セクションを辞書で保持。
+`model/pdf_document.py` はプレビュー専用に使う。
 
-- `start`, `end`
-- `filename`
-- `is_custom_name`
+- `PdfToJpegPresenter` は先頭ページプレビューとページ数取得にだけ再利用する
+- JPEG書き出し自体は `frame_width` / `zoom` ベース API に寄せず、`PdfToJpegProcessor` の専用レンダリングで行う
 
-期待する不変条件:
+この分離により、プレビュー都合の縮尺ロジックが出力品質へ混ざらない。
 
-- `start <= end`
-- セクションはページ範囲を重複なく連続で覆う
-- `split_points` 変更後は必ず `_rebuild_sections_data()` で再構築される
+### 3.3 Presenter
 
-### 3.1 分割ジョブ構造
+`presenter/pdf_to_jpeg_presenter.py` の責務:
 
-`collect_split_jobs()` の戻り値要素:
+- 単一PDF入力の検証
+- `PdfDocument` を使った先頭ページプレビュー生成
+- 保存先選択と品質変更の反映
+- 実行前の競合確認ダイアログ表示
+- Processor 結果のポーリング
+- 完了通知と終了確認
 
-- `index`: 1始まりの連番
-- `start`: 開始ページ（0始まり）
-- `end`: 終了ページ（0始まり）
-- `filename`: 出力ファイル名（`.pdf` 付き）
+### 3.4 View
 
-## 4. 主要フロー
+`view/pdf_to_jpeg/pdf_to_jpeg_view.py` の責務:
 
-### 4.1 UIイベント → 再描画フロー
+- ヘッダー、単一PDF入力、プレビュー、品質スライダー、注記、保存先、進捗欄の構築
+- `PdfToJpegUiState` による一括更新
+- PDF ドロップ受付
+- プレビュー領域サイズの提供
+
+## 4. 主要データ
+
+### `PdfToJpegUiState`
+
+Presenter から View へ渡す表示状態 DTO。
+
+- 入力PDF表示 (`selected_pdf_text`)
+- 保存先表示 (`output_dir_text`, `output_detail_text`)
+- 注記文言 (`note_text`)
+- 進捗表示 (`progress_text`, `summary_text`, `progress_value`)
+- 品質 (`jpeg_quality`)
+- プレビュー (`preview_png_bytes`, `preview_text`)
+- 実行可否フラグ (`can_choose_pdf`, `can_choose_output`, `can_execute` など)
+
+### `PdfToJpegSession` の不変条件
+
+- 入力は単一PDFのみ
+- 出力ファイル名は常に `PDF名_XXX.jpg`
+- 出力先は常に `保存先/PDF名/` 配下
+- 実行可否は `input_pdf_path` と `output_dir` の両方が揃っていること
+
+## 5. 主要フロー
+
+### 5.1 PDF選択 → プレビュー更新
 
 ```mermaid
 flowchart TD
-  A[User Action in SplitView] --> B[SplitPresenter handler]
-    B --> C{Model state change?}
-    C -->|Yes| D[SplitSession updates state]
-    C -->|No| E[Keep current state]
-    D --> F{Render needed?}
-    E --> F
-    F -->|Yes| G[PdfDocument.render_page_image]
-    F -->|No| H[Skip render]
-  G --> I[SplitView.display_page]
-  H --> J[SplitPresenter._build_ui_state]
-    I --> J
-  J --> K[SplitView.update_ui]
+  A[User selects PDF or drops file] --> B[PdfToJpegPresenter._select_pdf]
+  B --> C[PdfDocument.open]
+  C --> D[PdfDocument.render_page_image first page]
+  D --> E[PNG bytes for preview]
+  E --> F[PdfToJpegPresenter._build_ui_state]
+  F --> G[MainWindow.update_pdf_to_jpeg_ui]
 ```
 
-対応メソッド例:
+ポイント:
 
-- ページ移動: `prev_page()`, `next_page()`, `go_to_page()`
-- 分割点操作: `add_split_point()`, `remove_split_point()`
-- 描画更新: `_render_and_refresh()`
+- プレビュー生成失敗時はセッション更新前にエラーを返す
+- 先頭ページ以外のプレビューは初版では持たない
 
-実装上のポイント:
-
-- ページ遷移やズーム変更時のみレンダリングを行う
-- 分割点だけ変わる操作では `_refresh_ui()` のみで済ませる
-
-### 4.2 分割実行（非同期）フロー
+### 5.2 PDF→JPEG 実行フロー
 
 ```mermaid
 flowchart TD
-  A[SplitPresenter.execute_split] --> B[View.ask_directory]
-    B --> C[SplitSession.collect_split_jobs]
-    C --> D[PdfProcessor.start_split]
-    D --> E[Worker Thread _split_worker]
-    E --> F{Success or Error}
-    F -->|Success| G[result_queue type=success]
-    F -->|Error| H[result_queue type=error]
-  G --> I[SplitPresenter._poll_split_results]
-    H --> I
-    I --> J[MainWindow.show_info/show_error]
-    I --> K[MainWindow.update_ui]
+  A[PdfToJpegPresenter.execute_conversion] --> B[Validate input and output]
+  B --> C[PdfToJpegSession.collect_conflicting_output_paths]
+  C --> D{Conflicts exist?}
+  D -->|Yes| E[View.ask_yes_no]
+  D -->|No| F[PdfToJpegProcessor.start_conversion]
+  E -->|Approved| F
+  E -->|Rejected| G[Stop]
+  F --> H[Worker thread renders pages]
+  H --> I[result_queue success/failure/progress/finished]
+  I --> J[Presenter polls results]
+  J --> K[MainWindow.update_pdf_to_jpeg_ui]
+  J --> L[show_info or show_error]
 ```
 
-補足:
+ポイント:
 
-- `SplitPresenter` が `schedule(100, _poll_split_results)` でポーリング
-- 実行中フラグは `PdfProcessor.is_splitting`
+- 上書き承認後は一括上書きとする
+- Presenter は 100ms 単位で結果キューをポーリングする
+- Processor はページ単位の結果と最終完了イベントを返す
 
-### 4.4 画面遷移フロー
+### 5.3 画面遷移と終了制御
 
 ```mermaid
 flowchart TD
-  A[HomeView] -->|PDF 分割| B[AppCoordinator]
-  B --> C[MainWindow.show_split]
-  C --> D[SplitView]
+  A[HomeView] -->|PDF → JPEG| B[AppCoordinator]
+  B --> C[MainWindow.show_pdf_to_jpeg]
+  C --> D[PdfToJpegView]
   D -->|ホームへ戻る| B
   B --> E{Busy or active session?}
   E -->|Busy| F[show_info]
@@ -216,62 +233,75 @@ flowchart TD
   G -->|OK| H
 ```
 
-実装上のポイント:
+終了時の共通ルール:
 
-- `start_split()` 呼び出し前に古いキュー結果を破棄する
-- 失敗時は `type=error` のメッセージを優先してUIへ返す
-- 完了時は `type=success` と作成ファイル数を通知する
+- 実行中なら確認ダイアログを出す
+- ポーリングジョブを停止する
+- 必要なプレビューリソースを閉じる
+- 最後に `destroy_window()` を呼ぶ
 
-### 4.3 終了処理フロー
+## 6. テストと確認観点
 
-1. 分割中なら確認ダイアログを表示
-2. ポーリングジョブがあれば `after_cancel`
-3. `PdfDocument.close()`
-4. View破棄
+### 6.1 自動テスト
 
-この順序を崩すと、終了間際のコールバックで例外が出る可能性があります。
+PDF→JPEG 追加時点で、次の粒度を持つ。
 
-## 5. キーバインド責務
+- Model テスト
+  - 命名規則
+  - 出力サブフォルダ決定
+  - 競合候補検出
+  - 品質保持
+  - 白背景合成
+  - キューイベント
+- Presenter テスト
+  - 入力不足
+  - 保存先不足
+  - 上書き確認
+  - 上書き承認後の開始
+  - 完了通知
+- View テスト
+  - ボタン配線
+  - プレビュー表示
+  - 進捗表示更新
+  - 実行中の無効化
+- Integration テスト
+  - Home → MainWindow → AppCoordinator の導線
+  - 戻る操作 / 終了制御
 
-- プレビュー上キー: `view/split/components/preview.py`
-- ファイル名入力欄キー: `view/split/components/controls.py`（`SectionPanel`）
-- 全体キー: `view/main_window.py` の `QShortcut`
+### 6.2 手動確認
 
-実装を変更した場合は、`docs/keyboard-shortcuts.md` も更新してください。
+1. ホーム画面から `PDF → JPEG` へ遷移できる
+2. PDF選択で先頭ページプレビューが表示される
+3. 保存先選択で `保存先/PDF名/` が表示される
+4. `PDF名_001.jpg` 形式で書き出される
+5. 既存JPEG競合時に確認ダイアログが出る
+6. 透明背景ページが白背景JPEGになる
 
-### 5.1 変更時のチェック観点
+## 7. 拡張時の指針
 
-- 同じキーが複数層で競合していないか
-- `Shift` 判定分岐（`event.state`）が期待どおりか
-- テンキー `KP_Enter` の対応漏れがないか
+- 新しい機能はまず Session / Processor / Presenter / UiState の順で責務を分ける
+- 状態が増える場合は Session と UiState に明示的に追加する
+- 非同期処理を増やす場合も View に直接スレッドを持ち込まない
+- Home からの導線追加は `AppCoordinator` と `MainWindow` の両方を更新する
 
-## 6. 拡張時の指針
+### 7.1 PDF→JPEG を拡張するときの注意
 
-- 新しい機能はまず各機能 Presenter のユースケース単位で追加
-- 状態が増える場合は `SplitSession` / `UiState` に明示的に反映
-- 非同期処理を増やす場合は `PdfProcessor` に閉じ込め、Viewに直接スレッドを持ち込まない
-- Viewコンポーネントは表示責務に限定し、業務ロジックを置かない
+- DPI 指定を追加する場合は Session に設定値を持たせ、Processor のレンダリング倍率へつなぐ
+- ページ範囲指定を追加する場合は Session に範囲解決責務を持たせる
+- PNG 出力や命名テンプレート変更を追加する場合も、命名規則は Model に閉じ込める
 
-### 6.1 典型的な改修手順
+### 7.2 アンチパターン
 
-1. ユースケースをPresenterのメソッドとして定義
-2. 必要な状態をModelへ追加
-3. `UiState` に表示項目を追加
-4. Viewコンポーネントを最小変更で更新
-5. ドキュメント（本書 + user-manual + keyboard-shortcuts）を同期
+- View で上書き判定や実行可否を独自に判断する
+- Presenter から Qt の個別ウィジェット状態を直接読む
+- `PdfDocument` のプレビュー API をそのまま JPEG 書き出しへ流用する
 
-### 6.2 改修時のアンチパターン
+## 8. ドキュメント保守ポイント
 
-- View側に `if split_points ...` のような業務判定を増やす
-- PresenterからTkウィジェットへ直接アクセスする
-- Modelからメッセージボックス表示を呼ぶ
-
-## 7. ドキュメント保守ポイント
-
-- Viewイベント追加・キー追加時: `docs/keyboard-shortcuts.md` を更新
-- 分割処理の手順やエラー仕様変更時: `docs/user-manual.md` を更新
-- 層責務・フロー変更時: 本ドキュメントのMermaid図を更新
+- UI 導線やラベル変更時: `README.md` と `docs/user-manual.md` を更新
+- キー操作変更時: `docs/keyboard-shortcuts.md` を更新
+- 層責務・フロー変更時: 本書の Mermaid 図を更新
 
 ---
 
-将来、バッチ処理やCLIを追加する場合も、Presenterをユースケース境界として維持すると段階移行が容易です。
+将来、PDF→PNG やページ範囲付き書き出しを追加する場合も、Session と Processor を中心に仕様を固定してから Presenter / View を広げると破綻しにくい。

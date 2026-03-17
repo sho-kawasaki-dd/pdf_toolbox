@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from presenter.compress_presenter import CompressionPresenter
 from presenter.merge_presenter import MergePresenter
+from presenter.pdf_to_jpeg_presenter import PdfToJpegPresenter
 from presenter.split_presenter import SplitPresenter
 from view.main_window import MainWindow
 
@@ -27,6 +28,7 @@ class AppCoordinator:
         self._split_presenter = SplitPresenter(view)
         self._merge_presenter = MergePresenter(view)
         self._compress_presenter = CompressionPresenter(view)
+        self._pdf_to_jpeg_presenter = PdfToJpegPresenter(view)
 
         # 画面固有の戻る操作とウィンドウ終了操作をここへ集約して、
         # 各 Presenter が自分の実行中状態だけを判断すれば済むようにする。
@@ -34,6 +36,7 @@ class AppCoordinator:
         self._view.split_view.back_to_home_requested.connect(self.on_back_to_home)
         self._view.merge_view.back_to_home_requested.connect(self.on_back_to_home)
         self._view.compress_view.back_to_home_requested.connect(self.on_back_to_home)
+        self._view.pdf_to_jpeg_view.back_to_home_requested.connect(self.on_back_to_home)
         self._view.set_close_handler(self.on_window_closing)
 
     @property
@@ -48,6 +51,10 @@ class AppCoordinator:
     def merge_presenter(self) -> MergePresenter:
         return self._merge_presenter
 
+    @property
+    def pdf_to_jpeg_presenter(self) -> PdfToJpegPresenter:
+        return self._pdf_to_jpeg_presenter
+
     def _on_feature_selected(self, feature: str) -> None:
         """ホーム画面で選ばれた機能に応じて遷移先を切り替える。"""
         if feature == "split":
@@ -60,6 +67,10 @@ class AppCoordinator:
 
         if feature == "compress":
             self._view.show_compress()
+            return
+
+        if feature == "pdf-to-jpeg":
+            self._view.show_pdf_to_jpeg()
             return
 
         label = FEATURE_LABELS.get(feature, feature)
@@ -107,6 +118,18 @@ class AppCoordinator:
                 ):
                     return
 
+        if current_widget is self._view.pdf_to_jpeg_view:
+            if self._pdf_to_jpeg_presenter.is_busy():
+                self._view.show_info("実行中", "JPEG変換処理の実行中はホームへ戻れません。")
+                return
+
+            if self._pdf_to_jpeg_presenter.has_active_session():
+                if not self._view.ask_yes_no(
+                    "確認",
+                    "現在の PDF→JPEG セッションを保持したままホームへ戻ります。よろしいですか？",
+                ):
+                    return
+
         self._view.show_home()
 
     def on_window_closing(self) -> None:
@@ -124,6 +147,10 @@ class AppCoordinator:
 
         if current_widget is self._view.compress_view or self._compress_presenter.has_active_session():
             self._compress_presenter.on_closing()
+            return
+
+        if current_widget is self._view.pdf_to_jpeg_view or self._pdf_to_jpeg_presenter.has_active_session():
+            self._pdf_to_jpeg_presenter.on_closing()
             return
 
         self._view.destroy_window()

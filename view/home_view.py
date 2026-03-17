@@ -21,7 +21,7 @@ FEATURES: tuple[tuple[str, str, str, bool], ...] = (
     ("merge", "pdf_merger_icon.png", "PDF 結合", True),
     ("reorder", "pdf_page_reorder_icon.png", "PDF 並び替え", False),
     ("compress", "pdf_compressor_icon.png", "PDF 圧縮", True),
-    ("pdf-to-jpeg", "pdf2jpeg_icon.png", "PDF → JPEG", False),
+    ("pdf-to-jpeg", "pdf2jpeg_icon.png", "PDF → JPEG", True),
 )
 
 

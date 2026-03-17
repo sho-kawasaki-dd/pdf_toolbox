@@ -4,6 +4,8 @@ from model.compress.compression_session import CompressionSession
 from model.merge.merge_processor import MergeProcessor
 from model.merge.merge_session import MergeSession
 from model.merge.thumbnail_loader import ThumbnailLoader, ThumbnailResult
+from model.pdf_to_jpeg.pdf_to_jpeg_processor import PdfToJpegProcessor
+from model.pdf_to_jpeg.pdf_to_jpeg_session import PdfToJpegExportJob, PdfToJpegSession
 from model.split.split_session import SplitSession
 from model.split.pdf_processor import PdfProcessor
 
@@ -17,4 +19,7 @@ __all__ = [
 	"MergeSession",
 	"ThumbnailLoader",
 	"ThumbnailResult",
+	"PdfToJpegSession",
+	"PdfToJpegExportJob",
+	"PdfToJpegProcessor",
 ]

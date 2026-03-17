@@ -17,6 +17,7 @@ from PIL import Image
 from view.compress.compress_view import CompressionUiState, CompressionView
 from view.home_view import HomeView
 from view.merge.merge_view import MergeUiState, MergeView
+from view.pdf_to_jpeg.pdf_to_jpeg_view import PdfToJpegUiState, PdfToJpegView
 from view.split.split_view import SplitView, UiState
 
 
@@ -36,6 +37,7 @@ class MainWindow(QMainWindow):
         self._presenter: Any = None
         self._compress_presenter: Any = None
         self._merge_presenter: Any = None
+        self._pdf_to_jpeg_presenter: Any = None
         self._close_handler: Callable[[], None] | None = None
         self._timers: dict[str, QTimer] = {}
         self._next_timer_id: int = 0
@@ -48,12 +50,14 @@ class MainWindow(QMainWindow):
         self.split_view = SplitView()
         self.merge_view = MergeView()
         self.compress_view = CompressionView()
+        self.pdf_to_jpeg_view = PdfToJpegView()
         # 画面切り替えは stacked widget へ寄せ、MainWindow 自体は
         # 「どの画面を見せるか」だけを知る構成にする。
         self.stack.addWidget(self.home_view)
         self.stack.addWidget(self.split_view)
         self.stack.addWidget(self.merge_view)
         self.stack.addWidget(self.compress_view)
+        self.stack.addWidget(self.pdf_to_jpeg_view)
         self.stack.setCurrentWidget(self.home_view)
 
         self._sync_split_view_aliases()
@@ -84,6 +88,11 @@ class MainWindow(QMainWindow):
         """結合画面のイベントを Presenter に接続する。"""
         self._merge_presenter = presenter
         self.merge_view.set_presenter(presenter)
+
+    def set_pdf_to_jpeg_presenter(self, presenter: Any) -> None:
+        """PDF→JPEG 画面のイベントを Presenter に接続する。"""
+        self._pdf_to_jpeg_presenter = presenter
+        self.pdf_to_jpeg_view.set_presenter(presenter)
 
     def set_close_handler(self, handler: Callable[[], None]) -> None:
         """ウィンドウ closeEvent の委譲先を設定する。"""
@@ -141,6 +150,11 @@ class MainWindow(QMainWindow):
         self.stack.setCurrentWidget(self.merge_view)
         self._update_shortcuts_for_screen("home")
 
+    def show_pdf_to_jpeg(self) -> None:
+        """PDF→JPEG 画面を表示する。"""
+        self.stack.setCurrentWidget(self.pdf_to_jpeg_view)
+        self._update_shortcuts_for_screen("home")
+
     def update_ui(self, state: UiState) -> None:
         self.split_view.update_ui(state)
 
@@ -171,6 +185,14 @@ class MainWindow(QMainWindow):
     def update_merge_ui(self, state: MergeUiState) -> None:
         """結合画面の状態を更新する。"""
         self.merge_view.update_ui(state)
+
+    def update_pdf_to_jpeg_ui(self, state: PdfToJpegUiState) -> None:
+        """PDF→JPEG 画面の状態を更新する。"""
+        self.pdf_to_jpeg_view.update_ui(state)
+
+    def get_pdf_to_jpeg_preview_size(self) -> tuple[int, int]:
+        """PDF→JPEG 画面プレビュー領域のサイズを返す。"""
+        return self.pdf_to_jpeg_view.get_preview_size()
 
     def get_selected_compression_inputs(self) -> list[str]:
         """圧縮画面で選択中の入力パス一覧を返す。"""
