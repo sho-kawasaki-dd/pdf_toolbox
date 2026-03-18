@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from presenter.compress_presenter import CompressionPresenter
+from presenter.extract_presenter import ExtractPresenter
 from presenter.merge_presenter import MergePresenter
 from presenter.pdf_to_jpeg_presenter import PdfToJpegPresenter
 from presenter.split_presenter import SplitPresenter
@@ -12,7 +13,7 @@ from view.main_window import MainWindow
 FEATURE_LABELS = {
     "split": "PDF 分割",
     "merge": "PDF 結合",
-    "reorder": "ページ並び替え",
+    "extract": "PDF 抽出",
     "compress": "PDF 圧縮",
     "pdf-to-jpeg": "PDF → JPEG",
 }
@@ -27,6 +28,7 @@ class AppCoordinator:
         # 画面を行き来してもセッション状態を保持できるようにする。
         self._split_presenter = SplitPresenter(view)
         self._merge_presenter = MergePresenter(view)
+        self._extract_presenter = ExtractPresenter(view)
         self._compress_presenter = CompressionPresenter(view)
         self._pdf_to_jpeg_presenter = PdfToJpegPresenter(view)
 
@@ -37,6 +39,7 @@ class AppCoordinator:
         self._view.merge_view.back_to_home_requested.connect(self.on_back_to_home)
         self._view.compress_view.back_to_home_requested.connect(self.on_back_to_home)
         self._view.pdf_to_jpeg_view.back_to_home_requested.connect(self.on_back_to_home)
+        self._view.extract_view.back_to_home_requested.connect(self.on_back_to_home)
         self._view.set_close_handler(self.on_window_closing)
 
     @property
@@ -50,6 +53,10 @@ class AppCoordinator:
     @property
     def merge_presenter(self) -> MergePresenter:
         return self._merge_presenter
+
+    @property
+    def extract_presenter(self) -> ExtractPresenter:
+        return self._extract_presenter
 
     @property
     def pdf_to_jpeg_presenter(self) -> PdfToJpegPresenter:
@@ -67,6 +74,10 @@ class AppCoordinator:
 
         if feature == "compress":
             self._view.show_compress()
+            return
+
+        if feature == "extract":
+            self._view.show_extract()
             return
 
         if feature == "pdf-to-jpeg":
@@ -130,6 +141,18 @@ class AppCoordinator:
                 ):
                     return
 
+        if current_widget is self._view.extract_view:
+            if self._extract_presenter.is_busy():
+                self._view.show_info("実行中", "抽出処理の実行中はホームへ戻れません。")
+                return
+
+            if self._extract_presenter.has_active_session():
+                if not self._view.ask_yes_no(
+                    "確認",
+                    "現在の抽出セッションを保持したままホームへ戻ります。よろしいですか？",
+                ):
+                    return
+
         self._view.show_home()
 
     def on_window_closing(self) -> None:
@@ -151,6 +174,10 @@ class AppCoordinator:
 
         if current_widget is self._view.pdf_to_jpeg_view or self._pdf_to_jpeg_presenter.has_active_session():
             self._pdf_to_jpeg_presenter.on_closing()
+            return
+
+        if current_widget is self._view.extract_view or self._extract_presenter.has_active_session():
+            self._extract_presenter.on_closing()
             return
 
         self._view.destroy_window()

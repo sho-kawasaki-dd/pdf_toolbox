@@ -22,7 +22,7 @@ class TestHomeView:
         assert view.feature_buttons["compress"].isEnabled()
         assert view.feature_buttons["merge"].isEnabled()
         assert view.feature_buttons["pdf-to-jpeg"].isEnabled()
-        assert not view.feature_buttons["reorder"].isEnabled()
+        assert view.feature_buttons["extract"].isEnabled()
 
     def test_click_merge_emits_feature_selected(self, qtbot):
         view = HomeView()
@@ -86,7 +86,7 @@ class TestHomeView:
 
         assert not view.feature_buttons["split"].icon().isNull()
         assert not view.feature_buttons["merge"].icon().isNull()
-        assert not view.feature_buttons["reorder"].icon().isNull()
+        assert not view.feature_buttons["extract"].icon().isNull()
         assert not view.feature_buttons["compress"].icon().isNull()
         assert not view.feature_buttons["pdf-to-jpeg"].icon().isNull()
         assert view.mascot_card is not None

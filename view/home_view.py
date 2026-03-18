@@ -19,7 +19,7 @@ MASCOT_IMAGE_NAME = "pdf_manipulator_icon.png"
 FEATURES: tuple[tuple[str, str, str, bool], ...] = (
     ("split", "pdf_splitter_icon.png", "PDF 分割", True),
     ("merge", "pdf_merger_icon.png", "PDF 結合", True),
-    ("reorder", "pdf_page_reorder_icon.png", "PDF 並び替え", False),
+    ("extract", "pdf_extraction_icon.png", "PDF 抽出", True),
     ("compress", "pdf_compressor_icon.png", "PDF 圧縮", True),
     ("pdf-to-jpeg", "pdf2jpeg_icon.png", "PDF → JPEG", True),
 )
