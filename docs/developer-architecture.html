@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
 <head>
   <meta charset="utf-8" />
   <meta name="generator" content="pandoc" />
@@ -30,324 +30,321 @@
 <body>
 <h1 id="開発者向け設計ドキュメント">開発者向け設計ドキュメント</h1>
 <p>このアプリは PySide6 ベースのデスクトップアプリで、MVP（Model / View
-/ Presenter）で構成されています。</p>
+/ Presenter）を基本構成として実装されています。
+文書の目的は、責務境界、依存関係、変更時の着地点を明確にすることです。</p>
 <hr />
 <h2 id="目的">0. 目的</h2>
-<p>この文書の目的は、次の3点を明確にすることです。</p>
+<p>この文書では次の点を整理します。</p>
 <ul>
-<li>どの層に何を置くか（責務境界）</li>
-<li>変更時にどこへ影響が波及するか（依存関係）</li>
-<li>どの順番で改修すると安全か（実装フロー）</li>
+<li>どの層に何を置くか</li>
+<li>どのファイルがどの機能の正本か</li>
+<li>変更時にどこまで追うべきか</li>
 </ul>
 <h2 id="全体構成">1. 全体構成</h2>
+<h3 id="エントリーポイント">1.1 エントリーポイント</h3>
 <ul>
-<li>エントリーポイント: <code>main.py</code>
+<li><code>main.py</code>
 <ul>
-<li><code>MainWindow</code> を生成</li>
-<li>起動時スプラッシュを表示（<code>view/startup_splash.py</code>）</li>
-<li><code>AppCoordinator</code> を生成して各 Presenter を組み立てる</li>
-<li>Qt イベントループを開始</li>
-</ul></li>
-<li>Presenter:
-<ul>
-<li><code>presenter/app_coordinator.py</code>（画面遷移、ホーム選択、終了制御）</li>
-<li><code>presenter/split_presenter.py</code></li>
-<li><code>presenter/merge_presenter.py</code></li>
-<li><code>presenter/compress_presenter.py</code></li>
-<li><code>presenter/pdf_to_jpeg_presenter.py</code></li>
-</ul></li>
-<li>Model:
-<ul>
-<li><code>model/pdf_document.py</code>（プレビュー用 PDF 読み込み /
-レンダリング）</li>
-<li><code>model/split/*</code></li>
-<li><code>model/merge/*</code></li>
-<li><code>model/compress/*</code></li>
-<li><code>model/pdf_to_jpeg/*</code></li>
-</ul></li>
-<li>View:
-<ul>
-<li><code>view/main_window.py</code>（トップレベル、<code>QStackedWidget</code>、ダイアログ、タイマー）</li>
-<li><code>view/home_view.py</code>（ホーム画面）</li>
-<li><code>view/startup_splash.py</code></li>
-<li><code>view/split/*</code></li>
-<li><code>view/merge/*</code></li>
-<li><code>view/compress/*</code></li>
-<li><code>view/pdf_to_jpeg/*</code></li>
+<li><code>QApplication</code> を生成する</li>
+<li>フォントとアプリアイコンを設定する</li>
+<li>スプラッシュ画面を表示する</li>
+<li><code>MainWindow</code> と <code>AppCoordinator</code>
+を生成する</li>
+<li>Qt イベントループを開始する</li>
 </ul></li>
 </ul>
-<h3 id="依存の向き">1.1 依存の向き</h3>
+<h3 id="主要レイヤ">1.2 主要レイヤ</h3>
 <ul>
-<li><code>main.py</code> → View / Presenter を組み立てる</li>
-<li>Presenter → Model と View に依存</li>
-<li>Viewコンポーネント → Presenter にイベント委譲</li>
-<li>Model → 外部ライブラリ（PyMuPDF, PIL,
-pikepdf）へ依存可能だが、Viewには依存しない</li>
-</ul>
-<h3 id="プロジェクトツリー主要部">1.2 プロジェクトツリー（主要部）</h3>
-<pre class="text"><code>pdf_toobox/
-├─ main.py
-├─ pyproject.toml
-├─ docs/
-│  ├─ user-manual.md
-│  ├─ keyboard-shortcuts.md
-│  └─ developer-architecture.md
-├─ model/
-│  ├─ pdf_document.py
-│  ├─ split/
-│  ├─ merge/
-│  ├─ compress/
-│  └─ pdf_to_jpeg/
-├─ presenter/
-│  ├─ app_coordinator.py
-│  ├─ split_presenter.py
-│  ├─ merge_presenter.py
-│  ├─ compress_presenter.py
-│  └─ pdf_to_jpeg_presenter.py
-└─ view/
-   ├─ home_view.py
-   ├─ main_window.py
-   ├─ startup_splash.py
-   ├─ split/
-   ├─ merge/
-   ├─ compress/
-   └─ pdf_to_jpeg/</code></pre>
-<h2 id="責務分離ルール">2. 責務分離ルール</h2>
-<h3 id="presenter">Presenter</h3>
+<li>View
 <ul>
-<li>View の公開メソッドだけを呼ぶ</li>
-<li>Qt ウィジェットの詳細 API に直接依存しない</li>
-<li>Model と実行状態から <code>UiState</code> を組み立てて
-<code>update_*_ui()</code> で反映する</li>
-<li>バックグラウンド処理の結果はポーリングで受け取る</li>
-</ul>
-<h3 id="model">Model</h3>
+<li><code>view/main_window.py</code>:
+画面スタック、ダイアログ、タイマー、分割画面ショートカット</li>
+<li><code>view/home_view.py</code>: 機能カード一覧</li>
+<li><code>view/*</code>: 機能別画面</li>
+</ul></li>
+<li>Presenter
 <ul>
-<li>UI に依存しない純粋ロジック</li>
-<li>Session
-は機能ごとの状態、入力整形、実行可否、命名規則を保持する</li>
-<li>Processor はスレッド＋キューで非同期 I/O を担当する</li>
-</ul>
-<h3 id="view">View</h3>
+<li><code>presenter/app_coordinator.py</code>: 画面遷移と終了制御</li>
+<li><code>presenter/*_presenter.py</code>:
+各機能の入力検証、状態同期、非同期結果処理</li>
+</ul></li>
+<li>Model
 <ul>
-<li>イベントを Presenter へ委譲する</li>
-<li><code>UiState</code> を受けて表示更新する</li>
-<li>ファイルダイアログ、メッセージボックス、<code>schedule()</code>
-を提供する</li>
+<li><code>model/pdf_document.py</code>: PDF プレビュー共通基盤</li>
+<li><code>model/*/session.py</code>: UI 非依存の状態管理</li>
+<li><code>model/*/processor.py</code>: バックグラウンド処理</li>
+</ul></li>
 </ul>
-<p>運用上の共通ルール:</p>
+<h3 id="機能一覧">1.3 機能一覧</h3>
+<ul>
+<li><code>split</code>: 1 PDF を複数 PDF に分割</li>
+<li><code>merge</code>: 複数 PDF を 1 PDF に結合</li>
+<li><code>extract</code>: 複数 PDF から任意ページを抽出して 1 PDF
+を作成</li>
+<li><code>compress</code>: PDF / フォルダ / ZIP の一括圧縮</li>
+<li><code>pdf-to-jpeg</code>: 単一 PDF の全ページ JPEG 書き出し</li>
+</ul>
+<h2 id="依存関係の考え方">2. 依存関係の考え方</h2>
+<p>依存の向きは次のとおりです。</p>
+<ul>
+<li><code>main.py</code> が View と Presenter を組み立てる</li>
+<li>Presenter は View と Model の両方を参照する</li>
+<li>View は Presenter へイベントを渡す</li>
+<li>Model は View を知らない</li>
+</ul>
+<p>運用ルール:</p>
 <ul>
 <li>業務ルールは View に書かない</li>
-<li>非同期処理は Processor に閉じ込め、View
-に直接スレッドを持ち込まない</li>
-<li>画面遷移と終了時の共通ルールは <code>AppCoordinator</code>
-に寄せる</li>
+<li>Qt ウィジェットの細かい API は Presenter に持ち込まない</li>
+<li>バックグラウンド処理は Processor に閉じ込める</li>
+<li>画面遷移と終了制御は <code>AppCoordinator</code> に集約する</li>
 </ul>
-<h2 id="pdfjpeg-機能の責務">3. PDF→JPEG 機能の責務</h2>
-<h3 id="model-1">3.1 Model</h3>
-<h4
-id="modelpdf_to_jpegpdf_to_jpeg_session.py"><code>model/pdf_to_jpeg/pdf_to_jpeg_session.py</code></h4>
-<ul>
-<li>入力PDFパス、保存先フォルダ、JPEG品質を保持</li>
-<li>出力サブフォルダ名を <code>PDF名</code> から決定</li>
-<li><code>PDF名_001.jpg</code> 形式のファイル名を生成</li>
-<li>実行前の競合候補一覧を収集</li>
-<li>進捗状態を <code>total_pages</code>, <code>processed_pages</code>,
-<code>current_page_number</code> で保持</li>
-</ul>
-<h4
-id="modelpdf_to_jpegpdf_to_jpeg_processor.py"><code>model/pdf_to_jpeg/pdf_to_jpeg_processor.py</code></h4>
-<ul>
-<li>PyMuPDF で各ページを専用の書き出し経路でレンダリング</li>
-<li>透明要素を含むページは RGBA → 白背景 RGB に合成してから JPEG
-保存</li>
-<li><code>success</code> / <code>failure</code> / <code>progress</code>
-/ <code>finished</code> をキューへ積む</li>
-<li>実行前の競合検出結果を見て、未承認の上書きを拒否する</li>
-</ul>
-<h3 id="preview-基盤">3.2 Preview 基盤</h3>
-<p><code>model/pdf_document.py</code> はプレビュー専用に使う。</p>
-<ul>
-<li><code>PdfToJpegPresenter</code>
-は先頭ページプレビューとページ数取得にだけ再利用する</li>
-<li>JPEG書き出し自体は <code>frame_width</code> / <code>zoom</code>
-ベース API に寄せず、<code>PdfToJpegProcessor</code>
-の専用レンダリングで行う</li>
-</ul>
-<p>この分離により、プレビュー都合の縮尺ロジックが出力品質へ混ざらない。</p>
-<h3 id="presenter-1">3.3 Presenter</h3>
-<p><code>presenter/pdf_to_jpeg_presenter.py</code> の責務:</p>
-<ul>
-<li>単一PDF入力の検証</li>
-<li><code>PdfDocument</code> を使った先頭ページプレビュー生成</li>
-<li>保存先選択と品質変更の反映</li>
-<li>実行前の競合確認ダイアログ表示</li>
-<li>Processor 結果のポーリング</li>
-<li>完了通知と終了確認</li>
-</ul>
-<h3 id="view-1">3.4 View</h3>
-<p><code>view/pdf_to_jpeg/pdf_to_jpeg_view.py</code> の責務:</p>
-<ul>
-<li>ヘッダー、単一PDF入力、プレビュー、品質スライダー、注記、保存先、進捗欄の構築</li>
-<li><code>PdfToJpegUiState</code> による一括更新</li>
-<li>PDF ドロップ受付</li>
-<li>プレビュー領域サイズの提供</li>
-</ul>
-<h2 id="主要データ">4. 主要データ</h2>
-<h3 id="pdftojpeguistate"><code>PdfToJpegUiState</code></h3>
-<p>Presenter から View へ渡す表示状態 DTO。</p>
-<ul>
-<li>入力PDF表示 (<code>selected_pdf_text</code>)</li>
-<li>保存先表示 (<code>output_dir_text</code>,
-<code>output_detail_text</code>)</li>
-<li>注記文言 (<code>note_text</code>)</li>
-<li>進捗表示 (<code>progress_text</code>, <code>summary_text</code>,
-<code>progress_value</code>)</li>
-<li>品質 (<code>jpeg_quality</code>)</li>
-<li>プレビュー (<code>preview_png_bytes</code>,
-<code>preview_text</code>)</li>
-<li>実行可否フラグ (<code>can_choose_pdf</code>,
-<code>can_choose_output</code>, <code>can_execute</code> など)</li>
-</ul>
-<h3 id="pdftojpegsession-の不変条件"><code>PdfToJpegSession</code>
-の不変条件</h3>
-<ul>
-<li>入力は単一PDFのみ</li>
-<li>出力ファイル名は常に <code>PDF名_XXX.jpg</code></li>
-<li>出力先は常に <code>保存先/PDF名/</code> 配下</li>
-<li>実行可否は <code>input_pdf_path</code> と <code>output_dir</code>
-の両方が揃っていること</li>
-</ul>
-<h2 id="主要フロー">5. 主要フロー</h2>
-<h3 id="pdf選択-プレビュー更新">5.1 PDF選択 → プレビュー更新</h3>
-<pre class="mermaid"><code>flowchart TD
-  A[User selects PDF or drops file] --&gt; B[PdfToJpegPresenter._select_pdf]
-  B --&gt; C[PdfDocument.open]
-  C --&gt; D[PdfDocument.render_page_image first page]
-  D --&gt; E[PNG bytes for preview]
-  E --&gt; F[PdfToJpegPresenter._build_ui_state]
-  F --&gt; G[MainWindow.update_pdf_to_jpeg_ui]</code></pre>
-<p>ポイント:</p>
-<ul>
-<li>プレビュー生成失敗時はセッション更新前にエラーを返す</li>
-<li>先頭ページ以外のプレビューは初版では持たない</li>
-</ul>
-<h3 id="pdfjpeg-実行フロー">5.2 PDF→JPEG 実行フロー</h3>
-<pre class="mermaid"><code>flowchart TD
-  A[PdfToJpegPresenter.execute_conversion] --&gt; B[Validate input and output]
-  B --&gt; C[PdfToJpegSession.collect_conflicting_output_paths]
-  C --&gt; D{Conflicts exist?}
-  D --&gt;|Yes| E[View.ask_yes_no]
-  D --&gt;|No| F[PdfToJpegProcessor.start_conversion]
-  E --&gt;|Approved| F
-  E --&gt;|Rejected| G[Stop]
-  F --&gt; H[Worker thread renders pages]
-  H --&gt; I[result_queue success/failure/progress/finished]
-  I --&gt; J[Presenter polls results]
-  J --&gt; K[MainWindow.update_pdf_to_jpeg_ui]
-  J --&gt; L[show_info or show_error]</code></pre>
-<p>ポイント:</p>
-<ul>
-<li>上書き承認後は一括上書きとする</li>
-<li>Presenter は 100ms 単位で結果キューをポーリングする</li>
-<li>Processor はページ単位の結果と最終完了イベントを返す</li>
-</ul>
-<h3 id="画面遷移と終了制御">5.3 画面遷移と終了制御</h3>
-<pre class="mermaid"><code>flowchart TD
-  A[HomeView] --&gt;|PDF → JPEG| B[AppCoordinator]
-  B --&gt; C[MainWindow.show_pdf_to_jpeg]
-  C --&gt; D[PdfToJpegView]
-  D --&gt;|ホームへ戻る| B
-  B --&gt; E{Busy or active session?}
-  E --&gt;|Busy| F[show_info]
-  E --&gt;|Need confirm| G[ask_yes_no]
-  E --&gt;|OK| H[MainWindow.show_home]
-  G --&gt;|OK| H</code></pre>
-<p>終了時の共通ルール:</p>
-<ul>
-<li>実行中なら確認ダイアログを出す</li>
-<li>ポーリングジョブを停止する</li>
-<li>必要なプレビューリソースを閉じる</li>
-<li>最後に <code>destroy_window()</code> を呼ぶ</li>
-</ul>
-<h2 id="テストと確認観点">6. テストと確認観点</h2>
-<h3 id="自動テスト">6.1 自動テスト</h3>
-<p>PDF→JPEG 追加時点で、次の粒度を持つ。</p>
-<ul>
-<li>Model テスト
-<ul>
-<li>命名規則</li>
-<li>出力サブフォルダ決定</li>
-<li>競合候補検出</li>
-<li>品質保持</li>
-<li>白背景合成</li>
-<li>キューイベント</li>
-</ul></li>
-<li>Presenter テスト
-<ul>
-<li>入力不足</li>
-<li>保存先不足</li>
-<li>上書き確認</li>
-<li>上書き承認後の開始</li>
-<li>完了通知</li>
-</ul></li>
-<li>View テスト
-<ul>
-<li>ボタン配線</li>
-<li>プレビュー表示</li>
-<li>進捗表示更新</li>
-<li>実行中の無効化</li>
-</ul></li>
-<li>Integration テスト
-<ul>
-<li>Home → MainWindow → AppCoordinator の導線</li>
-<li>戻る操作 / 終了制御</li>
-</ul></li>
-</ul>
-<h3 id="手動確認">6.2 手動確認</h3>
+<h2 id="画面構成と起動フロー">3. 画面構成と起動フロー</h2>
+<h3 id="起動時の流れ">3.1 起動時の流れ</h3>
 <ol type="1">
-<li>ホーム画面から <code>PDF → JPEG</code> へ遷移できる</li>
-<li>PDF選択で先頭ページプレビューが表示される</li>
-<li>保存先選択で <code>保存先/PDF名/</code> が表示される</li>
-<li><code>PDF名_001.jpg</code> 形式で書き出される</li>
-<li>既存JPEG競合時に確認ダイアログが出る</li>
-<li>透明背景ページが白背景JPEGになる</li>
+<li><code>main.py</code> が <code>QApplication</code> を生成する</li>
+<li>スプラッシュを表示する</li>
+<li><code>MainWindow</code> を生成する</li>
+<li><code>AppCoordinator</code> が各 Presenter を組み立てる</li>
+<li>ホーム画面を表示する</li>
 </ol>
-<h2 id="拡張時の指針">7. 拡張時の指針</h2>
+<h3 id="画面スタック">3.2 画面スタック</h3>
+<p><code>MainWindow</code> は <code>QStackedWidget</code>
+を使って、次の画面を切り替えます。</p>
 <ul>
-<li>新しい機能はまず Session / Processor / Presenter / UiState
-の順で責務を分ける</li>
-<li>状態が増える場合は Session と UiState に明示的に追加する</li>
-<li>非同期処理を増やす場合も View に直接スレッドを持ち込まない</li>
-<li>Home からの導線追加は <code>AppCoordinator</code> と
-<code>MainWindow</code> の両方を更新する</li>
+<li>Home</li>
+<li>Split</li>
+<li>Merge</li>
+<li>Compress</li>
+<li>Extract</li>
+<li>PDF to JPEG</li>
 </ul>
-<h3 id="pdfjpeg-を拡張するときの注意">7.1 PDF→JPEG
-を拡張するときの注意</h3>
+<h3 id="ホーム画面の正本">3.3 ホーム画面の正本</h3>
+<p>ホーム画面に表示する機能カードの正本は <code>view/home_view.py</code>
+の <code>FEATURES</code> です。
+文書の機能一覧と画面表記がズレた場合は、まずここを基準に確認します。</p>
+<h2 id="共通アーキテクチャパターン">4. 共通アーキテクチャパターン</h2>
+<h3 id="session">4.1 Session</h3>
+<p>Session は各機能の UI 非依存状態を保持します。</p>
+<p>主な責務:</p>
 <ul>
-<li>DPI 指定を追加する場合は Session に設定値を持たせ、Processor
-のレンダリング倍率へつなぐ</li>
-<li>ページ範囲指定を追加する場合は Session に範囲解決責務を持たせる</li>
-<li>PNG 出力や命名テンプレート変更を追加する場合も、命名規則は Model
-に閉じ込める</li>
+<li>入力パスや選択状態の保持</li>
+<li>実行可否の判定</li>
+<li>出力先や命名規則の保持</li>
+<li>ズームや選択順序などの画面状態の保持</li>
 </ul>
-<h3 id="アンチパターン">7.2 アンチパターン</h3>
+<h3 id="processor">4.2 Processor</h3>
+<p>Processor はファイル I/O
+や重い処理をバックグラウンドで実行します。</p>
+<p>共通する特徴:</p>
 <ul>
-<li>View で上書き判定や実行可否を独自に判断する</li>
-<li>Presenter から Qt の個別ウィジェット状態を直接読む</li>
-<li><code>PdfDocument</code> のプレビュー API をそのまま JPEG
-書き出しへ流用する</li>
+<li>別スレッドで動く</li>
+<li>結果はキューへ積む</li>
+<li>Presenter 側からポーリングされる</li>
+<li>実行中フラグを持つ</li>
 </ul>
-<h2 id="ドキュメント保守ポイント">8. ドキュメント保守ポイント</h2>
+<p>結果メッセージは機能ごとに少し異なりますが、おおむね次の種別で運用されます。</p>
 <ul>
-<li>UI 導線やラベル変更時: <code>README.md</code> と
-<code>docs/user-manual.md</code> を更新</li>
-<li>キー操作変更時: <code>docs/keyboard-shortcuts.md</code> を更新</li>
-<li>層責務・フロー変更時: 本書の Mermaid 図を更新</li>
+<li><code>progress</code></li>
+<li><code>finished</code> または <code>success</code></li>
+<li><code>failure</code> または <code>error</code></li>
+<li><code>cancelled</code></li>
 </ul>
-<hr />
-<p>将来、PDF→PNG やページ範囲付き書き出しを追加する場合も、Session と
-Processor を中心に仕様を固定してから Presenter / View
-を広げると破綻しにくい。</p>
+<h3 id="presenter">4.3 Presenter</h3>
+<p>Presenter は View と Model の境界です。</p>
+<p>主な責務:</p>
+<ul>
+<li>入力検証</li>
+<li>Session 更新</li>
+<li>Processor 起動</li>
+<li>結果キューのポーリング</li>
+<li><code>UiState</code> の組み立て</li>
+<li>ダイアログ表示の判断</li>
+</ul>
+<h3 id="view">4.4 View</h3>
+<p>View は表示とイベント通知だけを担います。</p>
+<p>主な責務:</p>
+<ul>
+<li>ウィジェット構築</li>
+<li>Presenter へのイベント委譲</li>
+<li><code>update_*_ui()</code> による一括描画</li>
+<li>ダイアログとファイル選択の窓口</li>
+<li><code>schedule()</code> によるタイマー提供</li>
+</ul>
+<h2 id="機能別の責務整理">5. 機能別の責務整理</h2>
+<h3 id="pdf-分割">5.1 PDF 分割</h3>
+<ul>
+<li>Presenter: <code>presenter/split_presenter.py</code></li>
+<li>Model: <code>model/split/split_session.py</code>,
+<code>model/split/pdf_processor.py</code>,
+<code>model/pdf_document.py</code></li>
+<li>View: <code>view/split/*</code></li>
+</ul>
+<p>主なポイント:</p>
+<ul>
+<li><code>SplitSession</code>
+が分割点、セクション、ファイル名、ズームを保持する</li>
+<li>分割点から <code>sections_data</code> を再構築する</li>
+<li>ファイル名はサニタイズされ、Windows 予約名も補正対象になる</li>
+<li>分割画面だけ専用ショートカットがある</li>
+</ul>
+<h3 id="pdf-結合">5.2 PDF 結合</h3>
+<ul>
+<li>Presenter: <code>presenter/merge_presenter.py</code></li>
+<li>Model: <code>model/merge/merge_session.py</code>,
+<code>model/merge/merge_processor.py</code>,
+<code>model/merge/thumbnail_loader.py</code></li>
+<li>View: <code>view/merge/*</code></li>
+</ul>
+<p>主なポイント:</p>
+<ul>
+<li>入力は PDF のみ</li>
+<li>入力順の並び替えがそのまま結合順になる</li>
+<li>サムネイル読み込みと結合処理は別系統の非同期処理として動く</li>
+<li>保存先が既存ファイルの場合は実行前に上書き確認する</li>
+</ul>
+<h3 id="pdf-抽出">5.3 PDF 抽出</h3>
+<ul>
+<li>Presenter: <code>presenter/extract_presenter.py</code></li>
+<li>Model: <code>model/extract/extract_session.py</code>,
+<code>model/extract/extract_processor.py</code>,
+<code>model/extract/page_thumbnail_loader.py</code></li>
+<li>View: <code>view/extract/*</code></li>
+</ul>
+<p>主なポイント:</p>
+<ul>
+<li>Source と Target の 2 面構成で操作する</li>
+<li>Source は元 PDF 群、Target は出力 PDF のページ順を表す</li>
+<li><code>ExtractSession</code> は Source 選択、Target
+順序、ズーム、保存先を保持する</li>
+<li>同じページを Target に重複追加できる</li>
+<li><code>ExtractProcessor</code> は <code>ExtractPageSpec</code>
+の列から新しい PDF を組み立てる</li>
+</ul>
+<h3 id="pdf-圧縮">5.4 PDF 圧縮</h3>
+<ul>
+<li>Presenter: <code>presenter/compress_presenter.py</code></li>
+<li>Model: <code>model/compress/compression_session.py</code>,
+<code>model/compress/compression_processor.py</code>,
+<code>model/compress/settings.py</code></li>
+<li>View: <code>view/compress/*</code></li>
+</ul>
+<p>主なポイント:</p>
+<ul>
+<li>入力は PDF、ZIP、フォルダ</li>
+<li>圧縮モードは
+<code>lossy</code>、<code>lossless</code>、<code>both</code></li>
+<li>既定値は <code>model/compress/settings.py</code> に集約される</li>
+<li>実行結果は成功、失敗、スキップを集計して完了ダイアログに出す</li>
+</ul>
+<h3 id="pdf-jpeg">5.5 PDF → JPEG</h3>
+<ul>
+<li>Presenter: <code>presenter/pdf_to_jpeg_presenter.py</code></li>
+<li>Model: <code>model/pdf_to_jpeg/pdf_to_jpeg_session.py</code>,
+<code>model/pdf_to_jpeg/pdf_to_jpeg_processor.py</code>,
+<code>model/pdf_document.py</code></li>
+<li>View: <code>view/pdf_to_jpeg/*</code></li>
+</ul>
+<p>主なポイント:</p>
+<ul>
+<li>入力は単一 PDF のみ</li>
+<li>プレビューには <code>PdfDocument</code> を使い、書き出し自体は専用
+Processor が担う</li>
+<li>出力ファイル名は <code>PDF名_001.jpg</code> 形式</li>
+<li>出力先は常に <code>保存先/PDF名/</code></li>
+<li>透明要素を含むページは白背景へ合成して JPEG 保存する</li>
+</ul>
+<h2 id="画面遷移と終了制御">6. 画面遷移と終了制御</h2>
+<p><code>presenter/app_coordinator.py</code>
+が画面遷移の共通ルールを持ちます。</p>
+<p>主な責務:</p>
+<ul>
+<li>ホーム画面で選ばれた機能に応じて <code>MainWindow</code>
+の表示先を切り替える</li>
+<li>各画面の「ホームへ戻る」を受け取り、実行中かどうかを確認する</li>
+<li>アクティブセッションがある場合は確認ダイアログを出す</li>
+<li>ウィンドウ終了時に、適切な Presenter の <code>on_closing()</code>
+を呼ぶ</li>
+</ul>
+<p>実行中に共通して守るルール:</p>
+<ul>
+<li>実行中はホームへ戻れない</li>
+<li>終了時は確認ダイアログを出す</li>
+<li>必要なポーリングタイマーを停止してから終了する</li>
+</ul>
+<h2 id="ショートカットとフォーカス制御">7.
+ショートカットとフォーカス制御</h2>
+<p>専用ショートカットは現時点で PDF 分割画面のみです。
+<code>view/main_window.py</code> で <code>QShortcut</code> を
+<code>split_view</code>
+に登録し、表示画面に応じて有効化を切り替えています。</p>
+<p>分割画面には 2 種類のキー処理があります。</p>
+<ul>
+<li>画面全体ショートカット
+<ul>
+<li><code>PageUp</code>, <code>PageDown</code>,
+<code>Ctrl+PageUp</code>, <code>Ctrl+PageDown</code>, <code>Home</code>,
+<code>End</code>, <code>Shift+Enter</code>, <code>Ctrl+Up</code>,
+<code>Ctrl+Down</code></li>
+</ul></li>
+<li>個別ウィジェットのキー処理
+<ul>
+<li>プレビュー: <code>Enter</code>, <code>Delete</code>, <code>z</code>,
+<code>Z</code>, <code>d</code></li>
+<li>ファイル名入力欄: <code>Tab</code>, <code>Enter</code>,
+<code>Shift+Enter</code>, <code>Delete</code>,
+<code>FocusOut</code></li>
+</ul></li>
+</ul>
+<p>キー操作を変えた場合は、利用者向け文書とショートカット文書も更新する必要があります。</p>
+<h2 id="変更時の見方">8. 変更時の見方</h2>
+<h3 id="画面ラベルや導線を変える場合">8.1
+画面ラベルや導線を変える場合</h3>
+<ul>
+<li><code>view/home_view.py</code></li>
+<li><code>view/main_window.py</code></li>
+<li><code>presenter/app_coordinator.py</code></li>
+<li><code>README.md</code></li>
+<li><code>docs/user-manual.md</code></li>
+</ul>
+<h3 id="実行ルールや入出力仕様を変える場合">8.2
+実行ルールや入出力仕様を変える場合</h3>
+<ul>
+<li>該当機能の <code>model/*/session.py</code></li>
+<li>該当機能の <code>model/*/processor.py</code></li>
+<li>該当機能の <code>presenter/*_presenter.py</code></li>
+<li><code>docs/user-manual.md</code></li>
+<li><code>docs/developer-architecture.md</code></li>
+</ul>
+<h3 id="分割画面のキー操作を変える場合">8.3
+分割画面のキー操作を変える場合</h3>
+<ul>
+<li><code>view/main_window.py</code></li>
+<li><code>view/split/components/preview.py</code></li>
+<li><code>view/split/components/controls.py</code></li>
+<li><code>docs/keyboard-shortcuts.md</code></li>
+</ul>
+<h2 id="テスト">9. テスト</h2>
+<p><code>tests/</code> は概ね本体構成に対応しています。</p>
+<ul>
+<li><code>tests/model/</code>: Session や処理ロジックの確認</li>
+<li><code>tests/presenter/</code>: Presenter
+の入力検証、状態遷移、ダイアログ条件</li>
+<li><code>tests/view/</code>: View
+の基本動作、画面構築、シグナル接続</li>
+</ul>
+<p>新しい機能を足す場合は、少なくとも次の観点を押さえます。</p>
+<ul>
+<li>入力不足時のエラー表示</li>
+<li>正常系の状態遷移</li>
+<li>実行中の UI 制限</li>
+<li>出力先や命名規則の保持</li>
+</ul>
+<h2 id="ドキュメント更新方針">10. ドキュメント更新方針</h2>
+<p>この文書は設計と責務の正本です。 操作手順は
+<code>docs/user-manual.md</code>、ショートカット一覧は
+<code>docs/keyboard-shortcuts.md</code>、概要と導線は
+<code>README.md</code> に寄せます。</p>
+<p>同じ説明を複製しすぎないことを優先し、必要に応じて相互参照します。</p>
 </body>
 </html>

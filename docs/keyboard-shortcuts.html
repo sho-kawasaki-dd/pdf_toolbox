@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
 <head>
   <meta charset="utf-8" />
   <meta name="generator" content="pandoc" />
@@ -29,15 +29,18 @@
 </head>
 <body>
 <h1 id="キーボードショートカット">キーボードショートカット</h1>
-<p>この一覧は実装されているキー操作のみを記載しています。</p>
-<h2 id="使い方の前提">0. 使い方の前提</h2>
+<p>この一覧は、実装されているキー操作だけを記載しています。
+現時点で専用キーボードショートカットがあるのは PDF
+分割画面のみです。</p>
+<h2 id="前提">0. 前提</h2>
 <ul>
-<li>同じキーでも、フォーカス位置（プレビュー / ファイル名入力欄 /
-画面全体）で動作が異なります</li>
-<li>優先順位は、一般的に「入力欄のイベント」→「プレビューのイベント」→「画面全体ショートカット」です</li>
-<li>分割処理実行中は、ほとんどの操作が無効化されます</li>
+<li>有効範囲は PDF 分割画面です</li>
+<li>同じキーでも、フォーカス位置によって動作が変わります</li>
+<li>おおまかな優先順位は「入力欄」→「プレビュー」→「画面全体ショートカット」です</li>
+<li>分割処理実行中は多くの操作が制限されます</li>
 </ul>
-<h2 id="プレビュー上で使えるキー">1. プレビュー上で使えるキー</h2>
+<h2 id="プレビューで使えるキー">1. プレビューで使えるキー</h2>
+<p>プレビュー領域にフォーカスがあるときに有効です。</p>
 <table>
 <thead>
 <tr>
@@ -48,19 +51,19 @@
 <tbody>
 <tr>
 <td><code>PageUp</code></td>
-<td>1ページ戻る</td>
+<td>1 ページ戻る</td>
 </tr>
 <tr>
 <td><code>PageDown</code></td>
-<td>1ページ進む</td>
+<td>1 ページ進む</td>
 </tr>
 <tr>
 <td><code>Ctrl + PageUp</code></td>
-<td>10ページ戻る</td>
+<td>10 ページ戻る</td>
 </tr>
 <tr>
 <td><code>Ctrl + PageDown</code></td>
-<td>10ページ進む</td>
+<td>10 ページ進む</td>
 </tr>
 <tr>
 <td><code>Home</code></td>
@@ -75,35 +78,38 @@
 <td>現在ページに分割点を追加</td>
 </tr>
 <tr>
-<td><code>Delete</code></td>
-<td>現在ページの分割点を削除</td>
-</tr>
-<tr>
 <td><code>Shift + Enter</code></td>
 <td>分割を実行</td>
+</tr>
+<tr>
+<td><code>Delete</code></td>
+<td>現在ページの分割点を削除</td>
 </tr>
 <tr>
 <td><code>z</code></td>
 <td>ズームイン</td>
 </tr>
 <tr>
-<td><code>Z (Shift + z)</code></td>
+<td><code>Z</code></td>
 <td>ズームアウト</td>
 </tr>
 <tr>
 <td><code>d</code></td>
-<td>ズームを100%に戻す</td>
+<td>ズームを既定値に戻す</td>
 </tr>
 </tbody>
 </table>
 <p>補足:</p>
 <ul>
-<li><code>Enter</code> は「分割点を追加」、<code>Shift + Enter</code>
-は「分割実行」です</li>
-<li>ズーム操作はプレビュー領域にフォーカスがあるときのみ有効です</li>
+<li><code>Enter</code> とテンキーの <code>Enter</code>
+の両方に対応しています</li>
+<li><code>Z</code> は <code>Shift + z</code> と同じです</li>
+<li><code>z</code>, <code>Z</code>, <code>d</code>
+はプレビューがフォーカスを持つときだけ動作します</li>
 </ul>
 <h2 id="ファイル名入力欄で使えるキー">2.
 ファイル名入力欄で使えるキー</h2>
+<p>右側のファイル名入力欄にフォーカスがあるときに有効です。</p>
 <table>
 <thead>
 <tr>
@@ -130,16 +136,15 @@
 </tr>
 </tbody>
 </table>
-<p>※
-入力欄からフォーカスが外れたとき（FocusOut）も、ファイル名は保存されます。</p>
 <p>補足:</p>
 <ul>
-<li><code>Enter</code> と <code>Tab</code>
-はどちらも「保存して次へ」の同じ動作です</li>
-<li>連続入力では <code>Enter</code>
-連打でセクションを順に進められます</li>
+<li>入力欄からフォーカスが外れたときもファイル名は保存されます</li>
+<li><code>Tab</code> と <code>Enter</code>
+はどちらも「保存して次へ」です</li>
 </ul>
-<h2 id="グローバルキー画面全体">3. グローバルキー（画面全体）</h2>
+<h2 id="画面全体ショートカット">3. 画面全体ショートカット</h2>
+<p><code>view/main_window.py</code> で <code>QShortcut</code>
+として登録され、分割画面表示中だけ有効です。</p>
 <table>
 <thead>
 <tr>
@@ -148,6 +153,30 @@
 </tr>
 </thead>
 <tbody>
+<tr>
+<td><code>PageUp</code></td>
+<td>1 ページ戻る</td>
+</tr>
+<tr>
+<td><code>PageDown</code></td>
+<td>1 ページ進む</td>
+</tr>
+<tr>
+<td><code>Ctrl + PageUp</code></td>
+<td>10 ページ戻る</td>
+</tr>
+<tr>
+<td><code>Ctrl + PageDown</code></td>
+<td>10 ページ進む</td>
+</tr>
+<tr>
+<td><code>Home</code></td>
+<td>先頭ページへ移動</td>
+</tr>
+<tr>
+<td><code>End</code></td>
+<td>最終ページへ移動</td>
+</tr>
 <tr>
 <td><code>Shift + Enter</code></td>
 <td>分割を実行</td>
@@ -164,27 +193,25 @@
 </table>
 <p>補足:</p>
 <ul>
-<li>画面全体キーは <code>QShortcut</code>
-で登録され、分割画面の表示中のみ有効です</li>
-<li>入力欄やプレビュー側で同じキーが処理される場合は、そちらが優先されることがあります</li>
+<li><code>QShortcut</code> のコンテキストは
+<code>WidgetWithChildrenShortcut</code> です</li>
+<li>入力欄やプレビューが同じキーを先に処理する場合は、そちらが優先されます</li>
 </ul>
-<h2 id="補足">4. 補足</h2>
+<h2 id="他機能の扱い">4. 他機能の扱い</h2>
+<p>現時点では、結合、抽出、圧縮、PDF → JPEG
+には専用ショートカット一覧として文書化すべきキーバインドはありません。
+キー操作を追加した場合は、この文書も合わせて更新してください。</p>
+<h2 id="よく使う流れ">5. よく使う流れ</h2>
 <ul>
-<li>テンキーの <code>Enter</code> にも対応しています</li>
-<li><code>Z</code> は <code>Shift + z</code> と同義です</li>
-<li>誤操作を防ぐには、実行前にプレビュー側へ一度クリックしてフォーカスを明示してください</li>
-</ul>
-<h2 id="実務でよく使う組み合わせ">5. 実務でよく使う組み合わせ</h2>
+<li>分割点を連続で置く
 <ul>
-<li>ページ確認しながら分割点を置く
-<ul>
-<li><code>PageDown</code> → <code>Enter</code> を繰り返す</li>
+<li><code>PageDown</code> → <code>Enter</code></li>
 </ul></li>
-<li>セクション名を素早く付ける
+<li>セクション名を順番に付ける
 <ul>
-<li>入力 → <code>Enter</code>（次セクションへ）</li>
+<li>入力 → <code>Enter</code></li>
 </ul></li>
-<li>最終確認後に実行
+<li>最終確認して実行する
 <ul>
 <li><code>Ctrl + ↑/↓</code> でセクション移動 →
 <code>Shift + Enter</code></li>

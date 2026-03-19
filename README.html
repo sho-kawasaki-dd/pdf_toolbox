@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
 <head>
   <meta charset="utf-8" />
   <meta name="generator" content="pandoc" />
@@ -94,146 +94,174 @@
 </head>
 <body>
 <h1 id="pdf-toolbox-pyside6">PDF Toolbox (PySide6)</h1>
-<p>PDFの分割、結合、圧縮、PDF→JPEG書き出しを行うデスクトップアプリケーションです。<br />
-<code>main.py</code> から起動し、MVP（Model / View /
-Presenter）構成で実装されています。</p>
-<p>対象読者:</p>
+<p>PDF を扱う日常作業をまとめて支援する Windows
+向けデスクトップアプリケーションです。 <code>main.py</code>
+から起動し、MVP（Model / View / Presenter）構成で実装されています。</p>
+<h2 id="このアプリでできること">このアプリでできること</h2>
 <ul>
-<li>日常的にPDFを扱うユーザー</li>
-<li>アプリを改修・保守する開発者</li>
+<li>PDF 分割: 1 つの PDF をセクション単位で複数ファイルへ分割</li>
+<li>PDF 結合: 複数 PDF を並び替えて 1 つの PDF に結合</li>
+<li>PDF 抽出: 複数 PDF から任意ページだけを集めて新しい PDF を作成</li>
+<li>PDF 圧縮: PDF / フォルダ / ZIP を対象にした一括圧縮</li>
+<li>PDF → JPEG: 単一 PDF の全ページを JPEG として書き出し</li>
 </ul>
-<h2 id="主な機能">主な機能</h2>
+<p>用語の違い:</p>
 <ul>
-<li>PDF分割:
-ページ単位のセクション分割、分割点編集、出力ファイル名編集</li>
-<li>PDF結合: 複数PDFの並び替え、サムネイル確認、1つのPDFへの結合</li>
-<li>PDF圧縮: PDF / フォルダ / ZIP を対象にしたバッチ圧縮</li>
-<li>PDF→JPEG: 単一PDFの全ページを JPEG へ一括書き出し</li>
-</ul>
-<p>PDF→JPEG の初版仕様:</p>
-<ul>
-<li>入力は単一PDFのみ</li>
-<li>対象ページは全ページ固定</li>
-<li>出力ファイル名は <code>PDF名_001.jpg</code> 形式の3桁ゼロ埋め</li>
-<li>出力先は指定フォルダ直下ではなく <code>保存先/PDF名/</code>
-サブフォルダ配下</li>
-<li>既存JPEGと衝突する場合は実行前に確認し、承認後は一括上書き</li>
-<li>透明要素を含むページは白背景へ合成して JPEG 保存</li>
+<li>分割: 1 つの PDF を区切って複数ファイルにする機能</li>
+<li>抽出: 複数 PDF から必要なページだけを集めて 1 つの PDF
+にする機能</li>
 </ul>
 <h2 id="ドキュメント">ドキュメント</h2>
 <ul>
-<li>非開発者向け取扱説明書: <a
+<li>利用者向け取扱説明書: <a
 href="docs/user-manual.md">docs/user-manual.md</a></li>
-<li>ショートカット一覧: <a
+<li>分割画面ショートカット一覧: <a
 href="docs/keyboard-shortcuts.md">docs/keyboard-shortcuts.md</a></li>
-<li>開発者向け設計・フロー図: <a
+<li>開発者向け設計ドキュメント: <a
 href="docs/developer-architecture.md">docs/developer-architecture.md</a></li>
 </ul>
 <p>読み進め方の目安:</p>
 <ul>
-<li>はじめて使う: <code>user-manual</code> →
-<code>keyboard-shortcuts</code></li>
-<li>改修する: <code>developer-architecture</code> →
-該当ソースコード</li>
-<li>画面遷移や導線を変える: <code>presenter/app_coordinator.py</code> と
-<code>view/main_window.py</code></li>
+<li>はじめて使う: <code>docs/user-manual.md</code></li>
+<li>分割画面のキー操作を確認したい:
+<code>docs/keyboard-shortcuts.md</code></li>
+<li>改修や保守を始める: <code>docs/developer-architecture.md</code></li>
 </ul>
-<h2 id="最短で起動するソース実行">最短で起動する（ソース実行）</h2>
+<h2 id="ホーム画面の構成">ホーム画面の構成</h2>
+<p>起動後のホーム画面には、次の 5 つの機能カードが表示されます。</p>
+<ul>
+<li>PDF 分割</li>
+<li>PDF 結合</li>
+<li>PDF 抽出</li>
+<li>PDF 圧縮</li>
+<li>PDF → JPEG</li>
+</ul>
+<p>起動時にはスプラッシュ画面が表示され、最小 2
+秒表示された後にメインウィンドウへ切り替わります。</p>
+<h2 id="最短で起動する">最短で起動する</h2>
 <ol type="1">
-<li><p>Pythonを用意（<code>pyproject.toml</code> では
-<code>&gt;=3.14</code>）</p></li>
-<li><p>任意の仮想環境を有効化</p></li>
-<li><p>依存をインストール</p>
+<li><p>Python を用意します。 <code>pyproject.toml</code> の設定は
+<code>&gt;=3.14</code> です。</p></li>
+<li><p>任意の仮想環境を有効化します。</p></li>
+<li><p>依存関係をインストールします。</p>
 <div class="sourceCode" id="cb1"><pre
 class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="at">-U</span> pyside6 pillow pymupdf pikepdf</span></code></pre></div></li>
-<li><p>アプリを起動</p>
+<li><p>アプリを起動します。</p>
 <div class="sourceCode" id="cb2"><pre
 class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ex">python</span> main.py</span></code></pre></div></li>
-<li><p>起動表示を確認</p>
+<li><p>起動確認を行います。</p>
 <ul>
-<li>起動時に中央へスプラッシュが表示されます</li>
-<li>スプラッシュは最小1秒表示され、初期化完了後に自動で閉じます</li>
-<li>ホーム画面から各機能カードへ遷移できます</li>
+<li>スプラッシュ画面が表示される</li>
+<li>ホーム画面に 5 つの機能カードが並ぶ</li>
+<li>各カードから対応する画面へ遷移できる</li>
 </ul></li>
 </ol>
-<h3 id="pdfjpeg-の最短操作">PDF→JPEG の最短操作</h3>
+<h2 id="機能の概要">機能の概要</h2>
+<h3 id="pdf-分割">PDF 分割</h3>
+<ul>
+<li>単一 PDF をページ境界で区切って複数ファイルへ保存します</li>
+<li>分割点の追加・削除、セクションごとのファイル名編集に対応します</li>
+<li>プレビュー、ページ移動、ズーム、キーボード操作を備えています</li>
+</ul>
+<h3 id="pdf-結合">PDF 結合</h3>
+<ul>
+<li>複数 PDF を一覧へ追加して順番を並び替えられます</li>
+<li>結合前にサムネイルで内容を確認できます</li>
+<li>出力先 PDF を指定して 1 つのファイルへまとめます</li>
+</ul>
+<h3 id="pdf-抽出">PDF 抽出</h3>
+<ul>
+<li>複数 PDF を Source に追加し、必要ページだけを Target に集めます</li>
+<li>クリック、Ctrl/Shift
+を使った複数選択、ダブルクリック、ドラッグ＆ドロップに対応します</li>
+<li>Target 側で順番を並び替え、1 つの PDF として保存します</li>
+</ul>
+<h3 id="pdf-圧縮">PDF 圧縮</h3>
+<ul>
+<li>入力として PDF、フォルダ、ZIP を受け付けます</li>
+<li>圧縮モードは非可逆、可逆、両方の 3 種類です</li>
+<li>複数入力をまとめて処理し、成功・失敗・スキップ件数を集計表示します</li>
+</ul>
+<h3 id="pdf-jpeg">PDF → JPEG</h3>
+<ul>
+<li>入力は単一 PDF のみです</li>
+<li>全ページを <code>PDF名_001.jpg</code> 形式で連番出力します</li>
+<li>保存先は <code>保存先/PDF名/</code> サブフォルダです</li>
+<li>透明要素を含むページは白背景に合成して保存します</li>
+</ul>
+<h2 id="windows-で実行ファイルを作成する">Windows
+で実行ファイルを作成する</h2>
 <ol type="1">
-<li>ホーム画面で「PDF → JPEG」を選択</li>
-<li>単一PDFを選択し、先頭ページプレビューを確認</li>
-<li>JPEG品質を調整</li>
-<li>保存先フォルダを選択</li>
-<li>「JPEG書き出しを実行」を押す</li>
-<li><code>保存先/PDF名/PDF名_001.jpg</code>
-形式で出力されることを確認</li>
-</ol>
-<h2
-id="windowsで実行ファイルを作成するonedir">Windowsで実行ファイルを作成する（onedir）</h2>
-<ol type="1">
-<li><p>仮想環境を有効化し、依存をインストール</p>
+<li><p>仮想環境を有効化し、必要パッケージを入れます。</p>
 <div class="sourceCode" id="cb3"><pre
 class="sourceCode bash"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="at">-U</span> pyside6 pillow pymupdf pikepdf pyinstaller</span></code></pre></div></li>
-<li><p>PowerShell スクリプトを実行</p>
+<li><p>PowerShell からビルドスクリプトを実行します。</p>
 <div class="sourceCode" id="cb4"><pre
 class="sourceCode powershell"><code class="sourceCode powershell"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="op">.</span>\scripts\build-exe<span class="op">.</span><span class="fu">ps1</span></span></code></pre></div></li>
-<li><p>生成物を確認</p>
+<li><p>生成物を確認します。</p>
 <ul>
-<li>実行ファイル: <code>dist/</code> 配下のビルド成果物</li>
-<li>補助ファイル: ビルドスクリプトが利用する spec / assets 一式</li>
+<li>実行ファイルは <code>dist/</code> 配下に出力されます</li>
+<li><code>pdf_toolbox.spec</code>、<code>assets/</code>、<code>fonts/</code>
+などの補助ファイルを使います</li>
 </ul></li>
-<li><p>動作確認</p>
+<li><p>動作確認を行います。</p>
 <ul>
-<li>アプリを起動</li>
-<li>ホーム画面から各機能へ遷移できることを確認</li>
-<li>PDF→JPEG では PDF選択 → プレビュー → 保存先選択 → 実行 まで確認</li>
+<li>ホーム画面が表示される</li>
+<li>5 機能へ遷移できる</li>
+<li>代表機能として、分割または PDF→JPEG を最後まで実行できる</li>
 </ul></li>
 </ol>
 <p>補足:</p>
 <ul>
-<li>初回起動時に SmartScreen 警告が表示される場合があります</li>
-<li>onedir は onefile
-より起動が安定しやすく、トラブルシュートが容易です</li>
+<li>初回起動時は SmartScreen 警告が表示される場合があります</li>
+<li>onedir 形式は onefile より起動時の切り分けがしやすい構成です</li>
 </ul>
 <h2 id="実行ファイル配布版を使う場合">実行ファイル配布版を使う場合</h2>
-<p>配布された実行ファイル（例:
-<code>.exe</code>）を起動してください。<br />
-操作方法はソース実行版と同じです。</p>
-<p>配布版での確認ポイント:</p>
+<p>配布された <code>.exe</code> を起動してください。
+基本的な操作フローはソース実行版と同じです。</p>
+<p>確認ポイント:</p>
 <ul>
-<li>セキュリティ警告が表示された場合は、配布元の案内に従って実行許可を行います</li>
-<li>保存先に書き込み権限があるフォルダを選択してください</li>
-<li>PDF→JPEG では出力先サブフォルダが自動生成されます</li>
+<li>保存先として書き込み権限のあるフォルダを選ぶ</li>
+<li>処理中は対象画面の入力変更やホーム遷移が制限される場合がある</li>
+<li>PDF → JPEG では保存先の下に PDF
+名のサブフォルダが自動生成される</li>
 </ul>
 <h2 id="よくあるトラブル">よくあるトラブル</h2>
 <ul>
-<li>PDF→JPEG の実行前に上書き確認が出る
+<li>実行ボタンが押せない
 <ul>
-<li>既存の <code>PDF名_001.jpg</code>
-などが出力先サブフォルダに存在しています</li>
-<li>内容を確認し、問題なければ上書きを承認してください</li>
+<li>入力ファイルや保存先が不足しています</li>
+<li>画面ごとの必須項目を設定してください</li>
 </ul></li>
-<li>JPEG出力の背景が白になる
+<li>上書き確認が出る
 <ul>
-<li>透明要素を含むページは、初版仕様として白背景へ合成して保存します</li>
+<li>既存の出力ファイルと名前が重なっています</li>
+<li>内容を確認したうえで上書きするか、別の保存先を選んでください</li>
 </ul></li>
-<li>保存エラーが出る
+<li>実行中にホームへ戻れない
 <ul>
-<li>出力先ファイルを他アプリで開いていないか確認</li>
-<li>書き込み権限のあるフォルダを選択</li>
+<li>実行中のジョブ保護のため、各 Presenter が遷移を制御しています</li>
+</ul></li>
+<li>JPEG の背景が白になる
+<ul>
+<li>透明要素を含むページを白背景に合成して保存する仕様です</li>
 </ul></li>
 </ul>
 <h2 id="ドキュメント更新ルール">ドキュメント更新ルール</h2>
 <ul>
-<li>UI操作やキー操作を変更したら、<code>docs/user-manual.md</code> と
-<code>docs/keyboard-shortcuts.md</code> を更新</li>
-<li>MVPの責務や処理フローを変更したら、<code>docs/developer-architecture.md</code>
-を更新</li>
-<li>導線や起動手順を変更したら、この <code>README.md</code> を更新</li>
+<li>UI 操作やボタン名を変えたら <code>docs/user-manual.md</code>
+を更新する</li>
+<li>分割画面のキー操作を変えたら <code>docs/keyboard-shortcuts.md</code>
+を更新する</li>
+<li>MVP の責務、処理フロー、画面遷移を変えたら
+<code>docs/developer-architecture.md</code> を更新する</li>
+<li>起動手順、配布方法、文書導線を変えたらこの <code>README.md</code>
+を更新する</li>
 </ul>
-<h3 id="markdown-から-html-を再生成する">Markdown から HTML
-を再生成する</h3>
+<h2 id="markdown-から-html-を再生成する">Markdown から HTML
+を再生成する</h2>
 <p>PowerShell で次を実行すると、<code>README.md</code> と
-<code>docs/*.md</code> を <code>github-markdown.css</code> を参照する
-HTML に変換できます。</p>
+<code>docs/*.md</code> から HTML を再生成できます。</p>
 <div class="sourceCode" id="cb5"><pre
 class="sourceCode powershell"><code class="sourceCode powershell"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="op">./</span>scripts<span class="op">/</span>build-docs-html<span class="op">.</span><span class="fu">ps1</span></span></code></pre></div>
 </body>
