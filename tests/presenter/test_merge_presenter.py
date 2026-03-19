@@ -150,8 +150,30 @@ class TestMergePresenter:
         view.schedule.assert_called_once()
         state = view.update_merge_ui.call_args[0][0]
         assert state.can_add_inputs is False
-        assert "結合中" in state.progress_text
+        assert "準備" in state.progress_text
+        assert state.progress_value == 0
         assert state.can_back_home is False
+
+    def test_poll_merge_results_updates_progress_value(self) -> None:
+        view = _make_mock_view()
+        presenter = MergePresenter(view)
+        presenter._session.begin_execution()
+        presenter._last_status = "running"
+        presenter._merge_processor = SimpleNamespace(
+            is_merging=True,
+            poll_results=MagicMock(return_value=[
+                {"type": "progress", "processed_items": 0, "total_items": 1, "processed_pages": 1, "total_pages": 4},
+            ]),
+        )
+        view.schedule.return_value = "timer_2"
+        view.reset_mock()
+
+        presenter._poll_merge_results()
+
+        state = view.update_merge_ui.call_args[0][0]
+        assert state.progress_text == "結合中: 1 / 4 ページ"
+        assert state.progress_value == 25
+        view.schedule.assert_called_once()
 
     def test_set_selected_inputs_updates_move_buttons(self, sample_pdf: Path, tmp_path: Path) -> None:
         second = tmp_path / "second.pdf"
@@ -200,13 +222,15 @@ class TestMergePresenter:
 
     def test_poll_merge_results_shows_completion_summary(self, sample_pdf: Path, tmp_path: Path) -> None:
         view = _make_mock_view()
+        view.schedule.side_effect = lambda _ms, callback: callback() or "timer_1"
         presenter = MergePresenter(view)
+        presenter._session.add_inputs([str(sample_pdf)])
         presenter._session.begin_execution()
         presenter._merge_processor = SimpleNamespace(
             is_merging=False,
             poll_results=MagicMock(return_value=[
-                {"type": "progress", "processed_items": 1, "total_items": 1},
-                {"type": "finished", "processed_items": 1, "total_items": 1, "output_path": str(tmp_path / "merged.pdf")},
+                {"type": "progress", "processed_items": 0, "total_items": 1, "processed_pages": 1, "total_pages": 10},
+                {"type": "finished", "processed_items": 1, "total_items": 1, "processed_pages": 10, "total_pages": 10, "output_path": str(tmp_path / "merged.pdf")},
             ]),
         )
         view.reset_mock()
@@ -215,15 +239,18 @@ class TestMergePresenter:
 
         view.show_info.assert_called_once()
         assert "保存先:" in view.show_info.call_args[0][1]
+        state = view.update_merge_ui.call_args[0][0]
+        assert state.progress_value == 100
 
     def test_poll_merge_results_shows_error(self) -> None:
         view = _make_mock_view()
+        view.schedule.side_effect = lambda _ms, callback: callback() or "timer_1"
         presenter = MergePresenter(view)
         presenter._session.begin_execution()
         presenter._merge_processor = SimpleNamespace(
             is_merging=False,
             poll_results=MagicMock(return_value=[
-                {"type": "failure", "processed_items": 0, "total_items": 1, "message": "broken"},
+                {"type": "failure", "processed_items": 0, "total_items": 1, "processed_pages": 0, "total_pages": 10, "message": "broken"},
             ]),
         )
         view.reset_mock()

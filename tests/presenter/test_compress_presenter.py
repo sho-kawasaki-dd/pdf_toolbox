@@ -70,6 +70,15 @@ class TestCompressionPresenter:
         presenter._session.record_skip()
         presenter._processor.is_compressing = False
         presenter._processor.poll_results = MagicMock(return_value=[
+            {
+                "type": "success",
+                "item": "ok.pdf",
+                "output_path": "out/ok.pdf",
+                "message": "ok",
+                "input_bytes": 1_000,
+                "lossy_output_bytes": 700,
+                "final_output_bytes": 650,
+            },
             {"type": "skipped", "item": "skip.pdf", "reason": "invalid pdf"},
             {"type": "finished", "success_count": 1, "failure_count": 0, "skip_count": 1},
         ])
@@ -79,6 +88,11 @@ class TestCompressionPresenter:
         view.show_info.assert_called_once()
         assert "成功: 1件" in view.show_info.call_args[0][1]
         assert "スキップ: 1件" in view.show_info.call_args[0][1]
+        assert "元PDF総容量: 1000.0 B" in view.show_info.call_args[0][1]
+        assert "圧縮後総容量: 650.0 B" in view.show_info.call_args[0][1]
+        assert "全体圧縮率: 35.0%" in view.show_info.call_args[0][1]
+        assert "非可逆圧縮率: 30.0%" in view.show_info.call_args[0][1]
+        assert "可逆圧縮率: 5.0%" in view.show_info.call_args[0][1]
 
     def test_on_closing_requires_confirmation_while_busy(self) -> None:
         view = _make_mock_view()

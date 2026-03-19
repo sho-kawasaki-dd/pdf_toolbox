@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QProgressBar,
     QPushButton,
     QSizePolicy,
     QVBoxLayout,
@@ -43,6 +44,7 @@ class MergeUiState:
     selected_paths: list[str] = field(default_factory=list)
     output_path_text: str = "結合後PDFの保存先を選択してください"
     progress_text: str = "待機中"
+    progress_value: int = 0
     can_add_inputs: bool = True
     can_remove_selected: bool = False
     can_move_up: bool = False
@@ -150,7 +152,7 @@ class MergeInputRow(QWidget):
     def _apply_thumbnail(self, item: MergeInputItem) -> None:
         if item.thumbnail_png_bytes:
             pixmap = QPixmap()
-            if pixmap.loadFromData(item.thumbnail_png_bytes, "PNG"):
+            if pixmap.loadFromData(item.thumbnail_png_bytes):
                 scaled = pixmap.scaled(
                     self.thumbnail_label.size(),
                     Qt.AspectRatioMode.KeepAspectRatio,
@@ -248,6 +250,11 @@ class MergeView(QWidget):
         output_row.addWidget(self.btn_choose_output)
         output_layout.addLayout(output_row)
 
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        output_layout.addWidget(self.progress_bar)
+
         self.lbl_progress = QLabel("待機中")
         self.lbl_progress.setFont(make_app_font(12, bold=True))
         output_layout.addWidget(self.lbl_progress)
@@ -290,6 +297,7 @@ class MergeView(QWidget):
         self.btn_choose_output.setEnabled(state.can_choose_output)
         self.btn_execute.setEnabled(state.can_execute)
         self.txt_output_path.setText(state.output_path_text)
+        self.progress_bar.setValue(state.progress_value)
         self.lbl_progress.setText(state.progress_text)
         self.input_list.setDragEnabled(not state.is_running)
         self.input_list.setAcceptDrops(not state.is_running)

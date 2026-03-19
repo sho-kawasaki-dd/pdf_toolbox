@@ -11,6 +11,7 @@ import io
 import shutil
 import subprocess
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
@@ -24,6 +25,48 @@ from model.compress.settings import (
     PDF_LOSSY_PNG_QUALITY_DEFAULT,
     PNGQUANT_DEFAULT_SPEED,
 )
+
+
+@dataclass(frozen=True, slots=True)
+class CompressionMetrics:
+    """圧縮前後と中間段階のファイルサイズを保持する。"""
+
+    input_bytes: int
+    lossy_output_bytes: int
+    final_output_bytes: int
+
+
+def _get_file_size(path: str | Path) -> int:
+    """サイズ取得失敗で処理全体を落とさないための軽量ヘルパー。"""
+    try:
+        return Path(path).stat().st_size
+    except OSError:
+        return 0
+
+
+def _normalize_compression_result(
+    result: tuple[bool, str] | tuple[bool, str, CompressionMetrics | None],
+    input_path: str | Path,
+    output_path: str | Path,
+    *,
+    lossy_output_bytes: int | None = None,
+) -> tuple[bool, str, CompressionMetrics | None]:
+    """旧戻り値と新戻り値を共通形式へ正規化する。"""
+    ok = bool(result[0])
+    message = str(result[1])
+
+    metrics = result[2] if len(result) >= 3 else None
+    if metrics is not None or not ok:
+        return ok, message, metrics
+
+    input_bytes = _get_file_size(input_path)
+    final_output_bytes = _get_file_size(output_path)
+    intermediate_bytes = final_output_bytes if lossy_output_bytes is None else lossy_output_bytes
+    return ok, message, CompressionMetrics(
+        input_bytes=input_bytes,
+        lossy_output_bytes=intermediate_bytes,
+        final_output_bytes=final_output_bytes,
+    )
 
 
 def _import_fitz() -> tuple[Any | None, Exception | None]:
@@ -258,7 +301,7 @@ def compress_pdf_lossy(
     jpeg_quality: int = PDF_LOSSY_JPEG_QUALITY_DEFAULT,
     png_quality: int = PDF_LOSSY_PNG_QUALITY_DEFAULT,
     pngquant_speed: int = PNGQUANT_DEFAULT_SPEED,
-) -> tuple[bool, str]:
+) -> tuple[bool, str, CompressionMetrics | None]:
     """PyMuPDF を使って PDF 内のラスタ画像を圧縮する。
 
     この関数は意図的に保守的で、新しい画像バイト列が元より小さい場合にだけ置換する。
@@ -269,7 +312,7 @@ def compress_pdf_lossy(
 
     fitz_module, fitz_error = _import_fitz()
     if fitz_module is None:
-        return False, f"Lossy compression failed: {input_file.name} (PyMuPDF unavailable: {fitz_error})"
+        return False, f"Lossy compression failed: {input_file.name} (PyMuPDF unavailable: {fitz_error})", None
 
     try:
         with fitz_module.open(str(input_file)) as document:
@@ -335,20 +378,25 @@ def compress_pdf_lossy(
 
             document.save(str(output_file), garbage=4, deflate=True)
 
+        output_bytes = _get_file_size(output_file)
         return True, (
             f"Lossy compression completed: {input_file.name} "
             f"(replaced_images={replaced_count}, dpi={target_dpi}, "
             f"jpeg_quality={jpeg_quality}, png_quality={png_quality})"
+        ), CompressionMetrics(
+            input_bytes=_get_file_size(input_file),
+            lossy_output_bytes=output_bytes,
+            final_output_bytes=output_bytes,
         )
     except Exception as exc:
-        return False, f"Lossy compression failed: {input_file.name} ({exc})"
+        return False, f"Lossy compression failed: {input_file.name} ({exc})", None
 
 
 def compress_pdf_lossless(
     input_path: str | Path,
     output_path: str | Path,
     options: dict[str, bool] | None = None,
-) -> tuple[bool, str]:
+) -> tuple[bool, str, CompressionMetrics | None]:
     """pikepdf による PDF 構造最適化を行う。
 
     この経路ではページ描画内容には触れず、コンテナ構造の無駄削減やメタデータ整理だけを
@@ -360,7 +408,7 @@ def compress_pdf_lossless(
 
     pikepdf_module, pikepdf_error = _import_pikepdf()
     if pikepdf_module is None:
-        return False, f"Lossless compression failed: {input_file.name} (pikepdf unavailable: {pikepdf_error})"
+        return False, f"Lossless compression failed: {input_file.name} (pikepdf unavailable: {pikepdf_error})", None
 
     try:
         with pikepdf_module.open(str(input_file)) as pdf:
@@ -400,9 +448,13 @@ def compress_pdf_lossless(
                 recompress_flate=applied_options.get("recompress_streams", True),
             )
 
-        return True, f"Lossless compression completed: {input_file.name} ({applied_options})"
+        return True, f"Lossless compression completed: {input_file.name} ({applied_options})", CompressionMetrics(
+            input_bytes=_get_file_size(input_file),
+            lossy_output_bytes=_get_file_size(input_file),
+            final_output_bytes=_get_file_size(output_file),
+        )
     except Exception as exc:
-        return False, f"Lossless compression failed: {input_file.name} ({exc})"
+        return False, f"Lossless compression failed: {input_file.name} ({exc})", None
 
 
 def compress_pdf(
@@ -414,7 +466,7 @@ def compress_pdf(
     png_quality: int = PDF_LOSSY_PNG_QUALITY_DEFAULT,
     pngquant_speed: int = PNGQUANT_DEFAULT_SPEED,
     lossless_options: dict[str, bool] | None = None,
-) -> tuple[bool, str]:
+) -> tuple[bool, str, CompressionMetrics | None]:
     """非可逆・可逆・両方を統一的に扱う圧縮入口。
 
     `both` モードでは意図的に lossy を先、lossless を後に実行する。逆順にすると、
@@ -439,31 +491,55 @@ def compress_pdf(
 
     temp_output = output_file.with_suffix(output_file.suffix + ".tmp_lossy.pdf")
     try:
-        lossy_ok, lossy_message = compress_pdf_lossy(
+        lossy_ok, lossy_message, lossy_metrics = _normalize_compression_result(
+            compress_pdf_lossy(
+                input_file,
+                temp_output,
+                target_dpi=target_dpi,
+                jpeg_quality=jpeg_quality,
+                png_quality=png_quality,
+                pngquant_speed=pngquant_speed,
+            ),
             input_file,
             temp_output,
-            target_dpi=target_dpi,
-            jpeg_quality=jpeg_quality,
-            png_quality=png_quality,
-            pngquant_speed=pngquant_speed,
         )
         if not lossy_ok:
             # 安全に置換できる画像が無い場合や、一部画像のデコードに失敗した場合でも、
             # lossless 側だけで処理を成立させた方がユーザーにとって有益である。
-            return compress_pdf_lossless(input_file, output_file, options=lossless_options)
+            return _normalize_compression_result(
+                compress_pdf_lossless(input_file, output_file, options=lossless_options),
+                input_file,
+                output_file,
+                lossy_output_bytes=_get_file_size(input_file),
+            )
 
-        lossless_ok, lossless_message = compress_pdf_lossless(
+        lossy_output_bytes = 0 if lossy_metrics is None else lossy_metrics.final_output_bytes
+        lossless_ok, lossless_message, lossless_metrics = _normalize_compression_result(
+            compress_pdf_lossless(
+                temp_output,
+                output_file,
+                options=lossless_options,
+            ),
             temp_output,
             output_file,
-            options=lossless_options,
+            lossy_output_bytes=lossy_output_bytes,
         )
         if not lossless_ok:
             # 最も重い前段処理が終わっているなら、後段失敗で全体を無にするより、
             # lossy 結果を残した方がバッチ処理としては有益である。
             shutil.copy2(temp_output, output_file)
-            return True, f"{lossy_message} / {lossless_message} (kept lossy output)"
+            final_output_bytes = _get_file_size(output_file)
+            return True, f"{lossy_message} / {lossless_message} (kept lossy output)", CompressionMetrics(
+                input_bytes=0 if lossy_metrics is None else lossy_metrics.input_bytes,
+                lossy_output_bytes=lossy_output_bytes,
+                final_output_bytes=final_output_bytes,
+            )
 
-        return True, f"{lossy_message} / {lossless_message}"
+        return True, f"{lossy_message} / {lossless_message}", CompressionMetrics(
+            input_bytes=0 if lossy_metrics is None else lossy_metrics.input_bytes,
+            lossy_output_bytes=lossy_output_bytes,
+            final_output_bytes=lossy_output_bytes if lossless_metrics is None else lossless_metrics.final_output_bytes,
+        )
     finally:
         try:
             if temp_output.exists():

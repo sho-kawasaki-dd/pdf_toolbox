@@ -127,7 +127,7 @@ def test_compress_pdf_lossless_applies_options(sample_pdf: Path, tmp_path: Path,
     monkeypatch.setattr(native_compressor, "_import_pikepdf", lambda: (FakePikePdfModule, None))
 
     output_path = tmp_path / "lossless.pdf"
-    ok, _message = native_compressor.compress_pdf_lossless(
+    ok, _message, metrics = native_compressor.compress_pdf_lossless(
         sample_pdf,
         output_path,
         options={
@@ -144,11 +144,15 @@ def test_compress_pdf_lossless_applies_options(sample_pdf: Path, tmp_path: Path,
     assert captured["linearize"] is False
     assert captured["object_stream_mode"] == "preserve"
     assert captured["recompress_flate"] is False
+    assert metrics is not None
+    assert metrics.input_bytes == sample_pdf.stat().st_size
+    assert metrics.lossy_output_bytes == sample_pdf.stat().st_size
+    assert metrics.final_output_bytes == output_path.stat().st_size
 
 
 def test_compress_pdf_lossy_creates_output(image_pdf: Path, tmp_path: Path) -> None:
     output_path = tmp_path / "compressed.pdf"
-    ok, message = native_compressor.compress_pdf_lossy(
+    ok, message, metrics = native_compressor.compress_pdf_lossy(
         image_pdf,
         output_path,
         target_dpi=96,
@@ -160,6 +164,10 @@ def test_compress_pdf_lossy_creates_output(image_pdf: Path, tmp_path: Path) -> N
     assert output_path.exists()
     assert "jpeg_quality=40" in message
     assert "png_quality=40" in message
+    assert metrics is not None
+    assert metrics.input_bytes == image_pdf.stat().st_size
+    assert metrics.lossy_output_bytes == output_path.stat().st_size
+    assert metrics.final_output_bytes == output_path.stat().st_size
 
 
 def test_validate_pdf_helpers(sample_pdf: Path, broken_pdf: Path) -> None:
@@ -190,13 +198,17 @@ def test_compress_pdf_both_mode_falls_back_to_lossless_when_lossy_fails(
     monkeypatch.setattr(native_compressor, "compress_pdf_lossless", fake_lossless)
 
     output_path = tmp_path / "fallback.pdf"
-    ok, message = native_compressor.compress_pdf(sample_pdf, output_path, mode="both")
+    ok, message, metrics = native_compressor.compress_pdf(sample_pdf, output_path, mode="both")
 
     assert ok is True
     assert output_path.exists()
     assert "lossless ok" in message
     assert [call[0] for call in calls] == ["lossy", "lossless"]
     assert calls[1][1] == sample_pdf
+    assert metrics is not None
+    assert metrics.input_bytes == sample_pdf.stat().st_size
+    assert metrics.lossy_output_bytes == sample_pdf.stat().st_size
+    assert metrics.final_output_bytes == output_path.stat().st_size
 
 
 def test_compress_pdf_both_mode_keeps_lossy_output_when_lossless_fails(
@@ -216,8 +228,12 @@ def test_compress_pdf_both_mode_keeps_lossy_output_when_lossless_fails(
     monkeypatch.setattr(native_compressor, "compress_pdf_lossless", fake_lossless)
 
     output_path = tmp_path / "kept-lossy.pdf"
-    ok, message = native_compressor.compress_pdf(sample_pdf, output_path, mode="both")
+    ok, message, metrics = native_compressor.compress_pdf(sample_pdf, output_path, mode="both")
 
     assert ok is True
     assert output_path.exists()
     assert "kept lossy output" in message
+    assert metrics is not None
+    assert metrics.input_bytes == sample_pdf.stat().st_size
+    assert metrics.lossy_output_bytes == sample_pdf.stat().st_size
+    assert metrics.final_output_bytes == output_path.stat().st_size

@@ -13,13 +13,14 @@ import threading
 import zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+from typing import cast
 
 from model.compress.compression_session import (
     CompressionCandidate,
     CompressionJob,
     CompressionSession,
 )
-from model.compress.native_compressor import compress_pdf, validate_pdf_bytes, validate_pdf_file
+from model.compress.native_compressor import CompressionMetrics, compress_pdf, validate_pdf_bytes, validate_pdf_file
 from model.compress.settings import ZIP_SCAN_MAX_DEPTH
 
 
@@ -312,6 +313,7 @@ class CompressionProcessor:
         """1 件の圧縮ジョブを実行し、キュー投入可能な結果を返す。"""
         output_path = Path(job.output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
+        input_bytes = self._get_candidate_size_bytes(job.candidate)
 
         if job.candidate.source_type == "zip_entry":
             if job.candidate.source_bytes is None:
@@ -329,15 +331,19 @@ class CompressionProcessor:
                 # が残り続けるのを避ける。
                 temp_source = Path(temp_dir) / job.candidate.preferred_filename
                 temp_source.write_bytes(job.candidate.source_bytes)
-                ok, message = compress_pdf(
-                    temp_source,
+                ok, message, metrics = self._normalize_compress_result(
+                    compress_pdf(
+                        temp_source,
+                        output_path,
+                        mode=session.mode,
+                        target_dpi=session.lossy_dpi,
+                        jpeg_quality=session.jpeg_quality,
+                        png_quality=session.png_quality,
+                        pngquant_speed=session.pngquant_speed,
+                        lossless_options=session.lossless_options,
+                    ),
+                    input_bytes,
                     output_path,
-                    mode=session.mode,
-                    target_dpi=session.lossy_dpi,
-                    jpeg_quality=session.jpeg_quality,
-                    png_quality=session.png_quality,
-                    pngquant_speed=session.pngquant_speed,
-                    lossless_options=session.lossless_options,
                 )
         else:
             if job.candidate.source_path is None:
@@ -347,23 +353,35 @@ class CompressionProcessor:
                     "reason": "missing source path",
                 }
 
-            ok, message = compress_pdf(
-                job.candidate.source_path,
+            ok, message, metrics = self._normalize_compress_result(
+                compress_pdf(
+                    job.candidate.source_path,
+                    output_path,
+                    mode=session.mode,
+                    target_dpi=session.lossy_dpi,
+                    jpeg_quality=session.jpeg_quality,
+                    png_quality=session.png_quality,
+                    pngquant_speed=session.pngquant_speed,
+                    lossless_options=session.lossless_options,
+                ),
+                input_bytes,
                 output_path,
-                mode=session.mode,
-                target_dpi=session.lossy_dpi,
-                jpeg_quality=session.jpeg_quality,
-                png_quality=session.png_quality,
-                pngquant_speed=session.pngquant_speed,
-                lossless_options=session.lossless_options,
             )
 
         if ok:
+            metrics = CompressionMetrics(
+                input_bytes=input_bytes,
+                lossy_output_bytes=input_bytes if metrics is None else metrics.lossy_output_bytes,
+                final_output_bytes=input_bytes if metrics is None else metrics.final_output_bytes,
+            )
             return {
                 "type": "success",
                 "item": job.candidate.source_label,
                 "output_path": str(output_path),
                 "message": message,
+                "input_bytes": metrics.input_bytes,
+                "lossy_output_bytes": metrics.lossy_output_bytes,
+                "final_output_bytes": metrics.final_output_bytes,
             }
 
         # 失敗を例外で止めず結果として返すのは、他のジョブを継続させるためである。
@@ -373,3 +391,34 @@ class CompressionProcessor:
             "output_path": str(output_path),
             "message": message,
         }
+
+    def _get_candidate_size_bytes(self, candidate: CompressionCandidate) -> int:
+        """候補の出自に応じて元 PDF のサイズを返す。"""
+        if candidate.source_bytes is not None:
+            return len(candidate.source_bytes)
+        if candidate.source_path is None:
+            return 0
+        try:
+            return Path(candidate.source_path).stat().st_size
+        except OSError:
+            return 0
+
+    def _normalize_compress_result(
+        self,
+        result: tuple[bool, str] | tuple[bool, str, CompressionMetrics | None],
+        input_bytes: int,
+        output_path: Path,
+    ) -> tuple[bool, str, CompressionMetrics | None]:
+        """旧シグネチャの圧縮関数も受け入れられるようにする。"""
+        ok = bool(result[0])
+        message = str(result[1])
+        metrics = cast(CompressionMetrics | None, result[2]) if len(result) >= 3 else None
+
+        if metrics is None and ok:
+            output_bytes = output_path.stat().st_size if output_path.exists() else input_bytes
+            metrics = CompressionMetrics(
+                input_bytes=input_bytes,
+                lossy_output_bytes=output_bytes,
+                final_output_bytes=output_bytes,
+            )
+        return ok, message, metrics

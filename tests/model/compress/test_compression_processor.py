@@ -164,3 +164,30 @@ def test_progress_messages_are_emitted_for_each_completed_item(
     assert len(progress_events) == 2
     assert progress_events[-1]["processed_items"] == 2
     assert finished[0]["success_count"] == 2
+
+
+def test_success_results_include_size_metrics(
+    sample_pdf: Path,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    def fake_compress(source: str | Path, output: str | Path, **_kwargs):
+        shutil.copy2(source, output)
+        return True, "ok"
+
+    monkeypatch.setattr("model.compress.compression_processor.compress_pdf", fake_compress)
+
+    session = CompressionSession()
+    session.add_input(str(sample_pdf))
+    session.set_output_dir(str(tmp_path / "out"))
+
+    processor = CompressionProcessor(max_workers=1)
+    processor.start_compression(session)
+    _wait_for_completion(processor)
+
+    results = processor.poll_results()
+    success = next(result for result in results if result["type"] == "success")
+
+    assert success["input_bytes"] == sample_pdf.stat().st_size
+    assert success["lossy_output_bytes"] == sample_pdf.stat().st_size
+    assert success["final_output_bytes"] == sample_pdf.stat().st_size

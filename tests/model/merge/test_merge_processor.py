@@ -23,7 +23,12 @@ def test_merge_success_creates_output_in_input_order(sample_pdf: Path, single_pa
     results = processor.poll_results()
 
     finished = [result for result in results if result["type"] == "finished"]
+    progress = [result for result in results if result["type"] == "progress"]
     assert finished[0]["output_path"] == str(output_path)
+    assert finished[0]["processed_pages"] == 11
+    assert finished[0]["total_pages"] == 11
+    assert progress[0]["processed_pages"] == 0
+    assert progress[-1]["processed_pages"] == 11
     assert output_path.exists()
 
     with fitz.open(str(output_path)) as merged:
@@ -65,11 +70,19 @@ def test_cancelled_merge_leaves_no_partial_output(sample_pdf: Path, tmp_path: Pa
     original_append = processor._append_input_pdf
     call_count = {"value": 0}
 
-    def cancelling_append(merged_doc, input_path) -> None:
-        original_append(merged_doc, input_path)
+    def cancelling_append(merged_doc, input_path, total_items, processed_items, total_pages, processed_pages) -> int:
+        appended_pages = original_append(
+            merged_doc,
+            input_path,
+            total_items,
+            processed_items,
+            total_pages,
+            processed_pages,
+        )
         call_count["value"] += 1
         if call_count["value"] == 1:
             processor.request_cancel()
+        return appended_pages
 
     monkeypatch.setattr(processor, "_append_input_pdf", cancelling_append)
 
@@ -80,7 +93,7 @@ def test_cancelled_merge_leaves_no_partial_output(sample_pdf: Path, tmp_path: Pa
     cancelled = [result for result in results if result["type"] == "cancelled"]
     progress = [result for result in results if result["type"] == "progress"]
     assert cancelled
-    assert progress[0]["processed_items"] == 1
+    assert any(result["processed_pages"] >= 1 for result in progress)
     assert output_path.exists() is False
 
 

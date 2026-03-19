@@ -32,6 +32,7 @@ class TestMergeView:
             selected_paths=["C:/work/sample.pdf"],
             output_path_text="C:/out/merged.pdf",
             progress_text="待機中",
+            progress_value=0,
             can_remove_selected=True,
             can_execute=True,
         )
@@ -40,8 +41,27 @@ class TestMergeView:
 
         assert view.input_list.count() == 1
         assert view.txt_output_path.text() == "C:/out/merged.pdf"
+        assert view.progress_bar.value() == 0
         assert view.btn_execute.isEnabled() is True
         assert view.btn_remove_selected.isEnabled() is True
+
+    def test_update_ui_updates_progress_bar_value(self, qtbot) -> None:
+        view = MergeView()
+        qtbot.addWidget(view)
+
+        state = MergeUiState(
+            input_items=[
+                MergeInputItem(path="C:/work/sample.pdf", title="sample.pdf", detail="C:/work/sample.pdf"),
+            ],
+            progress_text="結合中: 1 / 4 ページ",
+            progress_value=25,
+            is_running=True,
+        )
+
+        view.update_ui(state)
+
+        assert view.progress_bar.value() == 25
+        assert view.lbl_progress.text() == "結合中: 1 / 4 ページ"
 
     def test_update_ui_shows_thumbnail_pixmap(self, qtbot, sample_pdf: Path) -> None:
         view = MergeView()
@@ -144,13 +164,15 @@ class TestMergeView:
         state = MergeUiState(
             input_items=[MergeInputItem(path="C:/one.pdf", title="one.pdf", detail="C:/one.pdf")],
             is_running=True,
-            progress_text="結合中: 0 / 1 件",
+            progress_text="結合中: 0 / 1 ページ",
+            progress_value=0,
         )
 
         view.update_ui(state)
 
         assert view.input_list.dragDropMode() == view.input_list.DragDropMode.NoDragDrop
         assert view.input_list.acceptDrops() is False
+        assert view.progress_bar.value() == 0
 
     def test_update_ui_disables_buttons_while_running(self, qtbot) -> None:
         view = MergeView()

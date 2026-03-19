@@ -22,6 +22,7 @@ class MergePresenter:
         self._close_after_cancel = False
         self._last_progress_processed = 0
         self._last_progress_total = 0
+        self._last_progress_unit_label = "ページ"
         self._last_status = "idle"
         self._last_finished_output: str | None = None
         self._last_error_message: str | None = None
@@ -120,13 +121,14 @@ class MergePresenter:
         self._session.begin_execution()
         self._close_after_cancel = False
         self._last_progress_processed = 0
-        self._last_progress_total = len(self._session.input_paths)
+        self._last_progress_total = 0
+        self._last_progress_unit_label = "ページ"
         self._last_status = "running"
         self._last_finished_output = None
         self._last_error_message = None
         self._merge_processor.start_merge(self._session.input_paths, self._session.output_path)
         self._refresh_ui()
-        self._ensure_merge_polling()
+        self._ensure_merge_polling(delay_ms=0)
 
     def on_closing(self) -> None:
         """実行中ならキャンセル要求を出し、停止後に終了する。"""
@@ -202,6 +204,7 @@ class MergePresenter:
 
         self._last_progress_processed = 0
         self._last_progress_total = 0
+        self._last_progress_unit_label = "ページ"
         self._last_status = "idle"
         self._last_finished_output = None
         self._last_error_message = None
@@ -210,9 +213,9 @@ class MergePresenter:
         if self._thumbnail_poll_job_id is None and self._thumbnail_loader.is_loading:
             self._thumbnail_poll_job_id = self._view.schedule(100, self._poll_thumbnail_results)
 
-    def _ensure_merge_polling(self) -> None:
+    def _ensure_merge_polling(self, delay_ms: int = 50) -> None:
         if self._merge_poll_job_id is None and self._merge_processor.is_merging:
-            self._merge_poll_job_id = self._view.schedule(100, self._poll_merge_results)
+            self._merge_poll_job_id = self._view.schedule(delay_ms, self._poll_merge_results)
 
     def _poll_thumbnail_results(self) -> None:
         results = self._thumbnail_loader.poll_results()
@@ -233,8 +236,7 @@ class MergePresenter:
         for result in self._merge_processor.poll_results():
             result_type = result.get("type")
             if result_type == "progress":
-                self._last_progress_processed = int(result.get("processed_items", 0))
-                self._last_progress_total = int(result.get("total_items", 0))
+                self._apply_progress_result(result)
             elif result_type == "finished":
                 finished_result = result
             elif result_type == "failure":
@@ -245,7 +247,7 @@ class MergePresenter:
         self._refresh_ui()
 
         if self._merge_processor.is_merging:
-            self._merge_poll_job_id = self._view.schedule(100, self._poll_merge_results)
+            self._merge_poll_job_id = self._view.schedule(50, self._poll_merge_results)
             return
 
         self._merge_poll_job_id = None
@@ -254,41 +256,75 @@ class MergePresenter:
 
         if finished_result is not None:
             self._last_status = "finished"
-            self._last_progress_processed = int(finished_result.get("processed_items", self._last_progress_processed))
-            self._last_progress_total = int(finished_result.get("total_items", self._last_progress_total))
+            self._apply_progress_result(finished_result)
             self._last_finished_output = str(finished_result.get("output_path", ""))
             self._refresh_ui()
-            self._view.show_info("結合完了", self._build_completion_message())
+            self._view.schedule(0, lambda: self._view.show_info("結合完了", self._build_completion_message()))
             return
 
         if failure_result is not None:
             self._last_status = "error"
             self._last_error_message = str(failure_result.get("message", "PDF結合中にエラーが発生しました。"))
-            self._last_progress_processed = int(failure_result.get("processed_items", self._last_progress_processed))
-            self._last_progress_total = int(failure_result.get("total_items", self._last_progress_total))
+            self._apply_progress_result(failure_result)
             self._refresh_ui()
-            self._view.show_error("結合エラー", self._last_error_message)
+            self._view.schedule(0, lambda: self._view.show_error("結合エラー", self._last_error_message or "PDF結合中にエラーが発生しました。"))
             return
 
         if cancelled_result is not None:
             self._last_status = "cancelled"
-            self._last_progress_processed = int(cancelled_result.get("processed_items", self._last_progress_processed))
-            self._last_progress_total = int(cancelled_result.get("total_items", self._last_progress_total))
+            self._apply_progress_result(cancelled_result)
             self._refresh_ui()
             if self._close_after_cancel:
                 self._close_after_cancel = False
                 self.on_closing()
                 return
 
-            self._view.show_info("キャンセル", str(cancelled_result.get("message", "PDF結合をキャンセルしました。")))
+            self._view.schedule(0, lambda: self._view.show_info("キャンセル", str(cancelled_result.get("message", "PDF結合をキャンセルしました。"))))
+
+    def _to_int(self, value: object, default: int = 0) -> int:
+        if isinstance(value, bool):
+            return int(value)
+        if isinstance(value, int):
+            return value
+        if isinstance(value, float):
+            return int(value)
+        if isinstance(value, str):
+            try:
+                return int(value)
+            except ValueError:
+                return default
+        return default
+
+    def _apply_progress_result(self, result: dict[str, object]) -> None:
+        total_pages = self._to_int(result.get("total_pages"))
+        processed_pages = self._to_int(result.get("processed_pages"))
+        if total_pages > 0:
+            self._last_progress_processed = processed_pages
+            self._last_progress_total = total_pages
+            self._last_progress_unit_label = "ページ"
+            return
+
+        self._last_progress_processed = self._to_int(result.get("processed_items"))
+        self._last_progress_total = self._to_int(result.get("total_items"))
+        self._last_progress_unit_label = "件"
 
     def _build_completion_message(self) -> str:
         lines = [
             "PDF結合が完了しました。",
-            f"入力数: {self._last_progress_total}件",
+            f"入力数: {len(self._session.input_paths)}件",
             f"保存先: {self._last_finished_output or self._session.output_path or '-'}",
         ]
         return "\n".join(lines)
+
+    def _calculate_progress_value(self) -> int:
+        if self._last_status == "finished" and self._last_progress_total > 0:
+            return 100
+
+        if self._last_progress_total <= 0:
+            return 0
+
+        bounded_processed = min(self._last_progress_processed, self._last_progress_total)
+        return int((bounded_processed / self._last_progress_total) * 100)
 
     def _build_ui_state(self) -> MergeUiState:
         items: list[MergeInputItem] = []
@@ -328,24 +364,29 @@ class MergePresenter:
         can_move_up = can_reorder and min(selected_indexes) > 0
         can_move_down = can_reorder and max(selected_indexes) < len(self._session.input_paths) - 1
 
-        if self._last_status == "running":
-            progress_text = f"結合中: {self._last_progress_processed} / {self._last_progress_total} 件"
+        if self._last_status == "running" and self._last_progress_total == 0:
+            progress_text = "結合ジョブを準備しています..."
+        elif self._last_status == "running":
+            progress_text = f"結合中: {self._last_progress_processed} / {self._last_progress_total} {self._last_progress_unit_label}"
         elif self._last_status == "cancelling":
-            progress_text = f"キャンセル中: {self._last_progress_processed} / {self._last_progress_total} 件"
+            progress_text = f"キャンセル中: {self._last_progress_processed} / {self._last_progress_total} {self._last_progress_unit_label}"
         elif self._last_status == "finished":
-            progress_text = f"完了: {self._last_progress_total} / {self._last_progress_total} 件"
+            progress_text = f"完了: {self._last_progress_total} / {self._last_progress_total} {self._last_progress_unit_label}"
         elif self._last_status == "error":
-            progress_text = f"エラー: {self._last_progress_processed} / {self._last_progress_total} 件"
+            progress_text = f"エラー: {self._last_progress_processed} / {self._last_progress_total} {self._last_progress_unit_label}"
         elif self._last_status == "cancelled":
-            progress_text = f"キャンセル済み: {self._last_progress_processed} / {self._last_progress_total} 件"
+            progress_text = f"キャンセル済み: {self._last_progress_processed} / {self._last_progress_total} {self._last_progress_unit_label}"
         else:
             progress_text = "待機中"
+
+        progress_value = self._calculate_progress_value()
 
         return MergeUiState(
             input_items=items,
             selected_paths=selected[:],
             output_path_text=self._session.output_path or "結合後PDFの保存先を選択してください",
             progress_text=progress_text,
+            progress_value=progress_value,
             can_add_inputs=not self._session.is_running,
             can_remove_selected=not self._session.is_running and bool(selected),
             can_move_up=can_move_up,

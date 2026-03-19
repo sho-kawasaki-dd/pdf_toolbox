@@ -19,6 +19,7 @@ class CompressionPresenter:
         self._session = CompressionSession()
         self._processor = CompressionProcessor()
         self._poll_job_id: str | None = None
+        self._recent_successes: list[dict[str, object]] = []
         self._recent_failures: list[dict[str, object]] = []
         self._recent_skips: list[dict[str, object]] = []
         # 進捗更新のたびにフォルダや ZIP を再帰走査すると UI が重くなるため、
@@ -118,6 +119,7 @@ class CompressionPresenter:
             return
 
         self._session.begin_batch(0)
+        self._recent_successes.clear()
         self._recent_failures.clear()
         self._recent_skips.clear()
         self._processor.start_compression(self._session)
@@ -195,7 +197,9 @@ class CompressionPresenter:
         finished_result: dict[str, object] | None = None
         for result in self._processor.poll_results():
             result_type = result.get("type")
-            if result_type == "failure":
+            if result_type == "success":
+                self._recent_successes.append(result)
+            elif result_type == "failure":
                 self._recent_failures.append(result)
             elif result_type == "skipped":
                 self._recent_skips.append(result)
@@ -228,6 +232,11 @@ class CompressionPresenter:
             f"スキップ: {result.get('skip_count', 0)}件",
         ]
 
+        ratio_lines = self._build_ratio_lines()
+        if ratio_lines:
+            lines.append("")
+            lines.extend(ratio_lines)
+
         if self._recent_failures:
             lines.append("")
             lines.append("失敗例:")
@@ -245,6 +254,49 @@ class CompressionPresenter:
                 )
 
         return "\n".join(lines)
+
+    def _build_ratio_lines(self) -> list[str]:
+        """成功結果のバイト数から圧縮率を組み立てる。"""
+        if not self._recent_successes:
+            return []
+
+        total_input = 0
+        total_lossy = 0
+        total_final = 0
+        for success in self._recent_successes:
+            total_input += int(success.get("input_bytes", 0))
+            total_lossy += int(success.get("lossy_output_bytes", 0))
+            total_final += int(success.get("final_output_bytes", 0))
+
+        if total_input <= 0:
+            return [
+                "元PDF総容量: 算出不可",
+                "圧縮後総容量: 算出不可",
+                "全体圧縮率: 算出不可",
+                "非可逆圧縮率: 算出不可",
+                "可逆圧縮率: 算出不可",
+            ]
+
+        overall_ratio = ((total_input - total_final) / total_input) * 100
+        lossy_ratio = ((total_input - total_lossy) / total_input) * 100
+        lossless_ratio = ((total_lossy - total_final) / total_input) * 100
+        return [
+            f"元PDF総容量: {self._format_size(total_input)}",
+            f"圧縮後総容量: {self._format_size(total_final)}",
+            f"全体圧縮率: {overall_ratio:.1f}%",
+            f"非可逆圧縮率: {lossy_ratio:.1f}%",
+            f"可逆圧縮率: {lossless_ratio:.1f}%",
+        ]
+
+    def _format_size(self, size_bytes: int) -> str:
+        """完了メッセージ向けにバイト数を読みやすく整形する。"""
+        units = ("B", "KB", "MB", "GB", "TB")
+        value = float(max(0, size_bytes))
+        unit_index = 0
+        while value >= 1024 and unit_index < len(units) - 1:
+            value /= 1024
+            unit_index += 1
+        return f"{value:.1f} {units[unit_index]}"
 
     def _refresh_ui(self) -> None:
         """現在の Session/Processor 状態から View 全体を再描画する。"""
