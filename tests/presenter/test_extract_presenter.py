@@ -21,6 +21,8 @@ def _make_mock_view() -> MagicMock:
     # extract_view のシグナルを MagicMock で表現
     ev = MagicMock()
     ev.target_list = MagicMock()
+    ev.get_visible_source_page_refs.return_value = []
+    ev.get_visible_target_row_range.return_value = None
     view.extract_view = ev
     return view
 
@@ -31,6 +33,7 @@ def _stub_thumbnail_loader(**overrides) -> SimpleNamespace:
         poll_results=MagicMock(return_value=[]),
         get_cached=MagicMock(return_value=None),
         is_pending=MagicMock(return_value=False),
+        can_request=MagicMock(return_value=True),
         is_loading=False,
         invalidate=MagicMock(),
     )
@@ -72,7 +75,14 @@ class TestAddSourcePdf:
         view = _make_mock_view()
         view.ask_open_files.return_value = [str(sample_pdf)]
         p = ExtractPresenter(view)
-        p._thumbnail_loader = _stub_thumbnail_loader(is_loading=True)
+        view.extract_view.get_visible_source_page_refs.side_effect = (
+            lambda: [(p._session.source_documents[0].id, 0)] if p._session.source_documents else []
+        )
+        request_thumbnails = MagicMock(return_value=[(str(sample_pdf), 0)])
+        p._thumbnail_loader = _stub_thumbnail_loader(
+            request_thumbnails=request_thumbnails,
+            is_loading=True,
+        )
         view.reset_mock()
 
         p.add_pdf_files()
@@ -81,7 +91,34 @@ class TestAddSourcePdf:
         assert len(state.source_sections) == 1
         assert state.source_sections[0].page_count == 10
         assert state.source_sections[0].filename == sample_pdf.name
+        assert request_thumbnails.call_count == 1
+        requested_pages = request_thumbnails.call_args[0][0]
+        assert requested_pages == [
+            (str(sample_pdf), 1),
+            (str(sample_pdf), 2),
+            (str(sample_pdf), 3),
+            (str(sample_pdf), 4),
+            (str(sample_pdf), 0),
+        ]
         view.schedule.assert_called_once()
+
+    def test_add_pdf_files_does_not_request_all_pages_initially(self, sample_pdf: Path) -> None:
+        view = _make_mock_view()
+        view.ask_open_files.return_value = [str(sample_pdf)]
+        p = ExtractPresenter(view)
+        view.extract_view.get_visible_source_page_refs.side_effect = (
+            lambda: [(p._session.source_documents[0].id, 0)] if p._session.source_documents else []
+        )
+        request_thumbnails = MagicMock(return_value=[])
+        p._thumbnail_loader = _stub_thumbnail_loader(
+            request_thumbnails=request_thumbnails,
+            is_loading=False,
+        )
+
+        p.add_pdf_files()
+
+        requested_pages = request_thumbnails.call_args[0][0]
+        assert len(requested_pages) < 10
 
     def test_handle_dropped_paths_ignores_non_pdf(self, sample_pdf: Path, tmp_path: Path) -> None:
         view = _make_mock_view()
@@ -200,6 +237,24 @@ class TestSourceSelection:
         assert len(p._session.selected_source_pages) == 1
         assert p._session.selected_source_pages[0].page_index == 2
 
+    def test_shift_click_selects_page_range(self, sample_pdf: Path) -> None:
+        view = _make_mock_view()
+        p = ExtractPresenter(view)
+        p._thumbnail_loader = _stub_thumbnail_loader(is_loading=False)
+        p.handle_dropped_paths([str(sample_pdf)])
+        doc = p._session.source_documents[0]
+
+        from PySide6.QtCore import Qt
+        single_click = MagicMock()
+        single_click.modifiers.return_value = Qt.KeyboardModifier.NoModifier
+        shift_click = MagicMock()
+        shift_click.modifiers.return_value = Qt.KeyboardModifier.ShiftModifier
+
+        p._on_source_page_clicked(doc.id, 1, single_click)
+        p._on_source_page_clicked(doc.id, 4, shift_click)
+
+        assert [ref.page_index for ref in p._session.selected_source_pages] == [1, 2, 3, 4]
+
     def test_double_click_adds_to_target(self, sample_pdf: Path) -> None:
         view = _make_mock_view()
         p = ExtractPresenter(view)
@@ -238,18 +293,28 @@ class TestTargetOperations:
     def test_extract_selected_to_target(self, sample_pdf: Path) -> None:
         view = _make_mock_view()
         p = ExtractPresenter(view)
-        p._thumbnail_loader = _stub_thumbnail_loader(is_loading=False)
+        view.extract_view.get_visible_source_page_refs.side_effect = (
+            lambda: [(p._session.source_documents[0].id, 0)] if p._session.source_documents else []
+        )
+        view.extract_view.get_visible_target_row_range.return_value = (0, 0)
+        request_thumbnails = MagicMock(return_value=[])
+        p._thumbnail_loader = _stub_thumbnail_loader(
+            request_thumbnails=request_thumbnails,
+            is_loading=False,
+        )
         p.handle_dropped_paths([str(sample_pdf)])
         doc = p._session.source_documents[0]
         ref = SourcePageRef(doc_id=doc.id, page_index=4)
         p._session.set_selected_source_pages([ref])
         view.reset_mock()
+        request_thumbnails.reset_mock()
 
         p.extract_selected_to_target()
 
         state = view.update_extract_ui.call_args[0][0]
         assert len(state.target_items) == 1
         assert state.target_items[0].page_index == 4
+        request_thumbnails.assert_called_once_with([(str(sample_pdf), 4)])
 
     def test_remove_selected_targets(self, sample_pdf: Path) -> None:
         view, p, doc = self._setup_with_target(sample_pdf)
@@ -320,6 +385,34 @@ class TestTargetOperations:
         state = view.update_extract_ui.call_args[0][0]
         assert [t.entry_id for t in state.target_items] == reversed_ids
 
+    def test_target_viewport_requests_unique_pages_with_buffer(self, sample_pdf: Path) -> None:
+        view = _make_mock_view()
+        request_thumbnails = MagicMock(return_value=[])
+        p = ExtractPresenter(view)
+        p._thumbnail_loader = _stub_thumbnail_loader(
+            request_thumbnails=request_thumbnails,
+            is_loading=False,
+        )
+        p.handle_dropped_paths([str(sample_pdf)])
+        doc = p._session.source_documents[0]
+        refs = [
+            SourcePageRef(doc_id=doc.id, page_index=0),
+            SourcePageRef(doc_id=doc.id, page_index=1),
+            SourcePageRef(doc_id=doc.id, page_index=1),
+            SourcePageRef(doc_id=doc.id, page_index=2),
+        ]
+        p._session.add_to_target(refs)
+        view.extract_view.get_visible_target_row_range.return_value = (0, 2)
+        request_thumbnails.reset_mock()
+
+        p._on_target_viewport_changed()
+
+        request_thumbnails.assert_called_once_with([
+            (str(sample_pdf), 2),
+            (str(sample_pdf), 0),
+            (str(sample_pdf), 1),
+        ])
+
     def test_target_blocked_while_running(self, sample_pdf: Path) -> None:
         view, p, _ = self._setup_with_target(sample_pdf)
         p._processor = SimpleNamespace(is_running=True, poll_results=MagicMock(return_value=[]))
@@ -343,12 +436,170 @@ class TestZoom:
     def test_source_zoom_in(self) -> None:
         view = _make_mock_view()
         p = ExtractPresenter(view)
+        p._thumbnail_loader = _stub_thumbnail_loader(request_thumbnails=MagicMock(return_value=[]), is_loading=False)
         view.reset_mock()
 
         p.zoom_in_source()
 
         state = view.update_extract_ui.call_args[0][0]
         assert state.source_zoom_percent == 125
+
+    def test_source_zoom_requests_source_thumbnails_via_presenter(self, sample_pdf: Path) -> None:
+        view = _make_mock_view()
+        request_thumbnails = MagicMock(return_value=[])
+        p = ExtractPresenter(view)
+        view.extract_view.get_visible_source_page_refs.side_effect = (
+            lambda: [(p._session.source_documents[0].id, 0)] if p._session.source_documents else []
+        )
+        p._thumbnail_loader = _stub_thumbnail_loader(
+            request_thumbnails=request_thumbnails,
+            is_loading=False,
+        )
+        p.handle_dropped_paths([str(sample_pdf)])
+        request_thumbnails.reset_mock()
+
+        p.zoom_in_source()
+
+        request_thumbnails.assert_called_once_with([
+            (str(sample_pdf), 1),
+            (str(sample_pdf), 2),
+            (str(sample_pdf), 3),
+            (str(sample_pdf), 4),
+            (str(sample_pdf), 0),
+        ])
+
+    def test_target_viewport_change_requests_target_thumbnails_via_presenter(self, sample_pdf: Path) -> None:
+        view = _make_mock_view()
+        request_thumbnails = MagicMock(return_value=[])
+        p = ExtractPresenter(view)
+        view.extract_view.get_visible_source_page_refs.side_effect = (
+            lambda: [(p._session.source_documents[0].id, 0)] if p._session.source_documents else []
+        )
+        view.extract_view.get_visible_target_row_range.return_value = (0, 0)
+        p._thumbnail_loader = _stub_thumbnail_loader(
+            request_thumbnails=request_thumbnails,
+            is_loading=False,
+        )
+        p.handle_dropped_paths([str(sample_pdf)])
+        doc = p._session.source_documents[0]
+        p._session.add_to_target([SourcePageRef(doc_id=doc.id, page_index=2)])
+        request_thumbnails.reset_mock()
+
+        p._on_target_viewport_changed()
+
+        request_thumbnails.assert_called_once_with([(str(sample_pdf), 2)])
+
+    def test_source_viewport_requests_visible_range_with_buffer(self, sample_pdf: Path) -> None:
+        view = _make_mock_view()
+        request_thumbnails = MagicMock(return_value=[])
+        p = ExtractPresenter(view)
+        view.extract_view.get_visible_source_page_refs.side_effect = (
+            lambda: [(p._session.source_documents[0].id, 7)] if p._session.source_documents else []
+        )
+        p._thumbnail_loader = _stub_thumbnail_loader(
+            request_thumbnails=request_thumbnails,
+            is_loading=False,
+        )
+        p.handle_dropped_paths([str(sample_pdf)])
+        request_thumbnails.reset_mock()
+
+        p._on_source_viewport_changed()
+
+        assert request_thumbnails.call_args[0][0] == [
+            (str(sample_pdf), 3),
+            (str(sample_pdf), 4),
+            (str(sample_pdf), 5),
+            (str(sample_pdf), 6),
+            (str(sample_pdf), 8),
+            (str(sample_pdf), 9),
+            (str(sample_pdf), 7),
+        ]
+
+    def test_source_requests_skip_pages_loader_cannot_request(self, sample_pdf: Path) -> None:
+        view = _make_mock_view()
+        request_thumbnails = MagicMock(return_value=[])
+        p = ExtractPresenter(view)
+        view.extract_view.get_visible_source_page_refs.side_effect = (
+            lambda: [(p._session.source_documents[0].id, 2)] if p._session.source_documents else []
+        )
+
+        def can_request(path: str, page_index: int) -> bool:
+            return page_index not in {1, 3}
+
+        p._thumbnail_loader = _stub_thumbnail_loader(
+            request_thumbnails=request_thumbnails,
+            can_request=MagicMock(side_effect=can_request),
+            is_loading=False,
+        )
+        p.handle_dropped_paths([str(sample_pdf)])
+        request_thumbnails.reset_mock()
+
+        p._on_source_viewport_changed()
+
+        assert request_thumbnails.call_args[0][0] == [
+            (str(sample_pdf), 0),
+            (str(sample_pdf), 4),
+            (str(sample_pdf), 5),
+            (str(sample_pdf), 6),
+            (str(sample_pdf), 2),
+        ]
+
+    def test_source_requests_visible_pages_last_to_reduce_eviction_risk(self, sample_pdf: Path) -> None:
+        view = _make_mock_view()
+        request_thumbnails = MagicMock(return_value=[])
+        p = ExtractPresenter(view)
+        view.extract_view.get_visible_source_page_refs.side_effect = (
+            lambda: [(p._session.source_documents[0].id, 4)] if p._session.source_documents else []
+        )
+        p._thumbnail_loader = _stub_thumbnail_loader(
+            request_thumbnails=request_thumbnails,
+            is_loading=False,
+        )
+        p.handle_dropped_paths([str(sample_pdf)])
+        request_thumbnails.reset_mock()
+
+        p._on_source_viewport_changed()
+
+        assert request_thumbnails.call_args[0][0] == [
+            (str(sample_pdf), 0),
+            (str(sample_pdf), 1),
+            (str(sample_pdf), 2),
+            (str(sample_pdf), 3),
+            (str(sample_pdf), 5),
+            (str(sample_pdf), 6),
+            (str(sample_pdf), 7),
+            (str(sample_pdf), 8),
+            (str(sample_pdf), 4),
+        ]
+
+    def test_poll_thumbnail_results_rechecks_visible_pages_after_refresh(self, sample_pdf: Path) -> None:
+        view = _make_mock_view()
+        p = ExtractPresenter(view)
+        view.extract_view.get_visible_source_page_refs.return_value = [("doc-1", 0)]
+        view.extract_view.get_visible_target_row_range.return_value = None
+        request_thumbnails = MagicMock(return_value=[(str(sample_pdf), 0)])
+
+        def can_request(path: str, page_index: int) -> bool:
+            return page_index == 0
+
+        p._session.add_source(str(sample_pdf), 10)
+        doc = p._session.source_documents[0]
+        view.extract_view.get_visible_source_page_refs.return_value = [(doc.id, 0)]
+        p._thumbnail_loader = _stub_thumbnail_loader(
+            poll_results=MagicMock(return_value=[
+                SimpleNamespace(path=str(sample_pdf), page_index=8, status="ready", image_bytes=b"png"),
+            ]),
+            request_thumbnails=request_thumbnails,
+            can_request=MagicMock(side_effect=can_request),
+            is_loading=False,
+        )
+        view.reset_mock()
+
+        p._poll_thumbnail_results()
+
+        view.extract_view.update_source_page_thumbnail.assert_called_once_with(doc.id, 8, b"png", "ready")
+        view.update_extract_ui.assert_not_called()
+        request_thumbnails.assert_called_once_with([(str(sample_pdf), 0)])
 
     def test_source_zoom_out(self) -> None:
         view = _make_mock_view()
@@ -556,17 +807,22 @@ class TestPolling:
     def test_poll_thumbnail_refreshes_ui(self, sample_pdf: Path) -> None:
         view = _make_mock_view()
         p = ExtractPresenter(view)
+        p._session.add_source(str(sample_pdf), 10)
+        doc = p._session.source_documents[0]
+        view.extract_view.get_visible_source_page_refs.return_value = [(doc.id, 0)]
         p._thumbnail_loader = _stub_thumbnail_loader(
             poll_results=MagicMock(return_value=[
                 SimpleNamespace(path=str(sample_pdf), page_index=0, status="ready", image_bytes=b"png"),
             ]),
+            can_request=MagicMock(return_value=False),
             is_loading=False,
         )
         view.reset_mock()
 
         p._poll_thumbnail_results()
 
-        view.update_extract_ui.assert_called()
+        view.extract_view.update_source_page_thumbnail.assert_called_once_with(doc.id, 0, b"png", "ready")
+        view.update_extract_ui.assert_not_called()
         assert p._thumbnail_poll_job_id is None
 
     def test_thumbnail_poll_continues_while_loading(self) -> None:

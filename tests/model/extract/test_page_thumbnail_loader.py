@@ -130,3 +130,79 @@ def test_cache_lru_eviction(sample_pdf: Path) -> None:
     assert loader.get_cached(str(sample_pdf), 1) is not None
     assert loader.get_cached(str(sample_pdf), 2) is not None
     assert loader.get_cached(str(sample_pdf), 3) is not None
+
+
+def test_can_request_becomes_true_again_after_eviction(sample_pdf: Path) -> None:
+    loader = PageThumbnailLoader(cache_limit=1)
+
+    loader.request_thumbnails([(str(sample_pdf), 0), (str(sample_pdf), 1)])
+    _wait_for_loader(loader)
+    loader.poll_results()
+
+    assert loader.get_cached(str(sample_pdf), 0) is None
+    assert loader.can_request(str(sample_pdf), 0) is True
+
+
+def test_can_request_false_while_pending(sample_pdf: Path) -> None:
+    loader = PageThumbnailLoader()
+
+    loader.request_thumbnails([(str(sample_pdf), 0)])
+
+    assert loader.can_request(str(sample_pdf), 0) is False
+
+    _wait_for_loader(loader)
+
+
+def test_can_rerequest_page_after_eviction(sample_pdf: Path) -> None:
+    loader = PageThumbnailLoader(cache_limit=1)
+
+    loader.request_thumbnails([(str(sample_pdf), 0), (str(sample_pdf), 1)])
+    _wait_for_loader(loader)
+    loader.poll_results()
+
+    requested = loader.request_thumbnails([(str(sample_pdf), 0)])
+    _wait_for_loader(loader)
+    results = loader.poll_results()
+
+    assert requested == [(str(sample_pdf), 0)]
+    assert len(results) == 1
+    assert results[0].page_index == 0
+    assert results[0].status == "ready"
+
+
+def test_error_result_clears_pending_state(sample_pdf: Path) -> None:
+    loader = PageThumbnailLoader()
+
+    loader.request_thumbnails([(str(sample_pdf), 999)])
+    _wait_for_loader(loader)
+    loader.poll_results()
+
+    assert loader.is_pending(str(sample_pdf), 999) is False
+
+
+def test_poll_results_drains_queue(sample_pdf: Path) -> None:
+    loader = PageThumbnailLoader()
+
+    loader.request_thumbnails([(str(sample_pdf), 0), (str(sample_pdf), 1)])
+    _wait_for_loader(loader)
+
+    first_poll = loader.poll_results()
+    second_poll = loader.poll_results()
+
+    assert len(first_poll) == 2
+    assert second_poll == []
+
+
+def test_error_result_is_cached_until_invalidated(sample_pdf: Path) -> None:
+    loader = PageThumbnailLoader()
+
+    first = loader.request_thumbnails([(str(sample_pdf), 999)])
+    _wait_for_loader(loader)
+    loader.poll_results()
+    second = loader.request_thumbnails([(str(sample_pdf), 999)])
+    loader.invalidate(str(sample_pdf))
+    third = loader.request_thumbnails([(str(sample_pdf), 999)])
+
+    assert first == [(str(sample_pdf), 999)]
+    assert second == []
+    assert third == [(str(sample_pdf), 999)]

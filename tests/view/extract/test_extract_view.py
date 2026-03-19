@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import fitz
-from PySide6.QtCore import QMimeData, QPointF, Qt, QUrl
-from PySide6.QtGui import QDropEvent
+from PySide6.QtCore import QMimeData, QPoint, QPointF, Qt, QUrl
+from PySide6.QtGui import QDragEnterEvent, QDropEvent
 
 from view.extract.extract_view import (
     EXTRACT_PAGES_MIME,
@@ -16,6 +17,7 @@ from view.extract.extract_view import (
     SourceSectionItem,
     TargetItem,
     TargetPageList,
+    TargetRow,
 )
 
 
@@ -145,6 +147,76 @@ class TestSourceSections:
         ))
         assert len(view.get_source_section_widgets()) == 2
 
+    def test_update_source_ui_rebuilds_without_target_dependency(self, qtbot) -> None:
+        view = ExtractView()
+        qtbot.addWidget(view)
+
+        view.update_target_ui([_make_target_item("e1", "doc-1", 0, "a.pdf")], 100)
+        view.update_source_ui([_make_source_section("doc-1", "a.pdf", 2)], 125)
+
+        assert len(view.get_source_section_widgets()) == 1
+        assert view.target_list.count() == 1
+
+    def test_update_source_ui_reuses_existing_widgets(self, qtbot, sample_pdf: Path) -> None:
+        view = ExtractView()
+        qtbot.addWidget(view)
+
+        view.update_source_ui([_make_source_section("doc-1", "a.pdf", 2)], 100)
+        section_widget = view.get_source_section_widgets()[0]
+        page_widget = section_widget.page_widgets[0]
+
+        png_bytes = _render_thumbnail(sample_pdf)
+        updated_section = _make_source_section("doc-1", "a.pdf", 2, thumbnail_bytes=png_bytes)
+        view.update_source_ui([updated_section], 100)
+
+        assert view.get_source_section_widgets()[0] is section_widget
+        assert view.get_source_section_widgets()[0].page_widgets[0] is page_widget
+        assert not page_widget._image_label.pixmap().isNull()
+
+    def test_update_source_ui_skips_layout_rebuild_when_section_order_unchanged(self, qtbot) -> None:
+        view = ExtractView()
+        qtbot.addWidget(view)
+
+        section = _make_source_section("doc-1", "a.pdf", 2)
+        view.update_source_ui([section], 100)
+        view._rebuild_source_layout = MagicMock(wraps=view._rebuild_source_layout)
+
+        updated = _make_source_section("doc-1", "a.pdf", 2, selected_indices={1})
+        view.update_source_ui([updated], 100)
+
+        view._rebuild_source_layout.assert_not_called()
+
+    def test_update_source_ui_reuses_widgets_on_zoom_change(self, qtbot) -> None:
+        view = ExtractView()
+        qtbot.addWidget(view)
+
+        view.update_source_ui([_make_source_section("doc-1", "a.pdf", 2)], 100)
+        section_widget = view.get_source_section_widgets()[0]
+        page_widget = section_widget.page_widgets[0]
+
+        view.update_source_ui([_make_source_section("doc-1", "a.pdf", 2)], 150)
+
+        assert view.get_source_section_widgets()[0] is section_widget
+        assert view.get_source_section_widgets()[0].page_widgets[0] is page_widget
+        assert page_widget.width() > 0
+
+    def test_update_source_page_thumbnail_updates_only_target_page(self, qtbot, sample_pdf: Path) -> None:
+        view = ExtractView()
+        qtbot.addWidget(view)
+
+        view.update_source_ui([_make_source_section("doc-1", "a.pdf", 2)], 100)
+        section_widget = view.get_source_section_widgets()[0]
+        first_page = section_widget.page_widgets[0]
+        second_page = section_widget.page_widgets[1]
+
+        png_bytes = _render_thumbnail(sample_pdf)
+        updated = view.update_source_page_thumbnail("doc-1", 1, png_bytes, "ready")
+
+        assert updated is True
+        assert second_page._image_label.pixmap() is not None
+        assert second_page._image_label.pixmap().isNull() is False
+        assert first_page is section_widget.page_widgets[0]
+
     def test_empty_source_shows_placeholder(self, qtbot) -> None:
         view = ExtractView()
         qtbot.addWidget(view)
@@ -180,6 +252,15 @@ class TestSourceSections:
         pw = view.get_source_section_widgets()[0].page_widgets[0]
         assert pw._image_label.pixmap() is not None
         assert not pw._image_label.pixmap().isNull()
+
+    def test_get_visible_source_page_refs_falls_back_to_first_page(self, qtbot) -> None:
+        view = ExtractView()
+        qtbot.addWidget(view)
+
+        section = _make_source_section("doc-1", "sample.pdf", 6)
+        view.update_ui(ExtractUiState(source_sections=[section]))
+
+        assert view.get_visible_source_page_refs() == [("doc-1", 0)]
 
 
 # ── PageThumbnailWidget ───────────────────────────────
@@ -230,6 +311,26 @@ class TestPageThumbnailWidget:
         original_size = widget.width()
         widget.set_zoom(200)
         assert widget.width() > original_size
+
+    def test_set_zoom_rescales_existing_thumbnail(self, qtbot, sample_pdf: Path) -> None:
+        widget = PageThumbnailWidget("doc-1", 0, zoom_percent=100)
+        qtbot.addWidget(widget)
+
+        png_bytes = _render_thumbnail(sample_pdf)
+        widget.set_thumbnail(png_bytes)
+        original_pixmap = widget._image_label.pixmap()
+
+        assert original_pixmap is not None
+        assert not original_pixmap.isNull()
+
+        original_size = original_pixmap.size()
+        widget.set_zoom(200)
+
+        zoomed_pixmap = widget._image_label.pixmap()
+        assert zoomed_pixmap is not None
+        assert not zoomed_pixmap.isNull()
+        assert zoomed_pixmap.size().width() > original_size.width()
+        assert zoomed_pixmap.size().height() > original_size.height()
 
     def test_click_emits_signal(self, qtbot) -> None:
         widget = PageThumbnailWidget("doc-1", 3)
@@ -316,8 +417,192 @@ class TestTargetList:
         view.update_ui(ExtractUiState(target_items=items))
 
         row = view.target_list.itemWidget(view.target_list.item(0))
+        assert isinstance(row, TargetRow)
         assert row.thumbnail_label.pixmap() is not None
         assert not row.thumbnail_label.pixmap().isNull()
+
+    def test_update_target_ui_rebuilds_without_source_dependency(self, qtbot) -> None:
+        view = ExtractView()
+        qtbot.addWidget(view)
+
+        view.update_source_ui([_make_source_section("doc-1", "a.pdf", 2)], 100)
+        view.update_target_ui([_make_target_item("e1", "doc-1", 1, "a.pdf")], 150)
+
+        assert len(view.get_source_section_widgets()) == 1
+        assert view.target_list.count() == 1
+
+    def test_update_target_ui_reuses_existing_rows(self, qtbot, sample_pdf: Path) -> None:
+        view = ExtractView()
+        qtbot.addWidget(view)
+
+        items = [_make_target_item("e1", "doc-1", 0, "a.pdf")]
+        view.update_target_ui(items, 100)
+        item = view.target_list.item(0)
+        row = view.target_list.itemWidget(item)
+        assert isinstance(row, TargetRow)
+
+        updated_items = [_make_target_item("e1", "doc-1", 0, "a.pdf", thumbnail_bytes=_render_thumbnail(sample_pdf))]
+        view.update_target_ui(updated_items, 100)
+        updated_item = view.target_list.item(0)
+        updated_row = view.target_list.itemWidget(updated_item)
+
+        assert updated_item is item
+        assert updated_row is row
+        assert row.thumbnail_label.pixmap() is not None
+        assert row.thumbnail_label.pixmap().isNull() is False
+
+    def test_update_target_ui_preserves_selection_and_focus(self, qtbot) -> None:
+        view = ExtractView()
+        qtbot.addWidget(view)
+        view.show()
+
+        items = [
+            _make_target_item("e1", "doc-1", 0, "a.pdf", is_selected=True),
+            _make_target_item("e2", "doc-1", 1, "a.pdf"),
+        ]
+        view.update_target_ui(items, 100)
+        view.target_list.setFocus()
+        view.target_list.setCurrentItem(view.target_list.item(0))
+
+        updated_items = [
+            _make_target_item("e1", "doc-1", 0, "a.pdf", is_selected=True),
+            _make_target_item("e2", "doc-1", 1, "a.pdf"),
+        ]
+        view.update_target_ui(updated_items, 100)
+
+        assert view.target_list.item(0).isSelected() is True
+        assert view.target_list.currentItem().data(Qt.ItemDataRole.UserRole) == "e1"
+
+    def test_update_target_ui_skips_takeitem_when_order_unchanged(self, qtbot) -> None:
+        view = ExtractView()
+        qtbot.addWidget(view)
+
+        items = [
+            _make_target_item("e1", "doc-1", 0, "a.pdf"),
+            _make_target_item("e2", "doc-1", 1, "a.pdf"),
+            _make_target_item("e3", "doc-1", 2, "a.pdf"),
+        ]
+        view.update_target_ui(items, 100)
+        original_take_item = view.target_list.takeItem
+        view.target_list.takeItem = MagicMock(wraps=original_take_item)
+
+        updated_items = [
+            _make_target_item("e1", "doc-1", 0, "a.pdf", is_selected=True),
+            _make_target_item("e2", "doc-1", 1, "a.pdf"),
+            _make_target_item("e3", "doc-1", 2, "a.pdf"),
+        ]
+        view.update_target_ui(updated_items, 100)
+
+        view.target_list.takeItem.assert_not_called()
+
+    def test_update_target_ui_moves_only_changed_rows(self, qtbot) -> None:
+        view = ExtractView()
+        qtbot.addWidget(view)
+
+        items = [
+            _make_target_item("e1", "doc-1", 0, "a.pdf"),
+            _make_target_item("e2", "doc-1", 1, "a.pdf"),
+            _make_target_item("e3", "doc-1", 2, "a.pdf"),
+        ]
+        view.update_target_ui(items, 100)
+        original_take_item = view.target_list.takeItem
+        view.target_list.takeItem = MagicMock(wraps=original_take_item)
+
+        reordered_items = [items[2], items[0], items[1]]
+        view.update_target_ui(reordered_items, 100)
+
+        assert view.target_list.takeItem.call_count < len(items)
+        assert view.target_list.current_entry_ids() == ["e3", "e1", "e2"]
+
+    def test_update_target_ui_preserves_scroll_position(self, qtbot) -> None:
+        view = ExtractView()
+        qtbot.addWidget(view)
+        view.resize(900, 500)
+        view.show()
+
+        items = [_make_target_item(f"e{i}", "doc-1", i % 10, "a.pdf") for i in range(40)]
+        view.update_target_ui(items, 100)
+        qtbot.wait(50)
+        scrollbar = view.target_list.verticalScrollBar()
+        scrollbar.setValue(min(10, scrollbar.maximum()))
+        initial_value = scrollbar.value()
+
+        updated_items = [_make_target_item(f"e{i}", "doc-1", i % 10, "a.pdf") for i in range(40)]
+        updated_items[5] = _make_target_item("e5", "doc-1", 5, "renamed.pdf")
+        view.update_target_ui(updated_items, 100)
+
+        assert scrollbar.value() == initial_value
+
+    def test_update_target_ui_reuses_existing_rows_on_zoom_change(self, qtbot) -> None:
+        view = ExtractView()
+        qtbot.addWidget(view)
+
+        items = [_make_target_item("e1", "doc-1", 0, "a.pdf")]
+        view.update_target_ui(items, 100)
+        item = view.target_list.item(0)
+        row = view.target_list.itemWidget(item)
+        assert isinstance(row, TargetRow)
+
+        view.update_target_ui(items, 150)
+
+        assert view.target_list.item(0) is item
+        assert view.target_list.itemWidget(item) is row
+        assert row.thumbnail_label.width() >= 32
+
+    def test_update_target_entry_thumbnail_updates_only_matching_row(self, qtbot, sample_pdf: Path) -> None:
+        view = ExtractView()
+        qtbot.addWidget(view)
+
+        items = [
+            _make_target_item("e1", "doc-1", 0, "a.pdf"),
+            _make_target_item("e2", "doc-1", 1, "a.pdf"),
+        ]
+        view.update_target_ui(items, 100)
+        first_row = view.target_list.itemWidget(view.target_list.item(0))
+        second_row = view.target_list.itemWidget(view.target_list.item(1))
+        assert isinstance(first_row, TargetRow)
+        assert isinstance(second_row, TargetRow)
+
+        updated = view.update_target_entry_thumbnail("e2", _render_thumbnail(sample_pdf), "ready")
+
+        assert updated is True
+        assert second_row.thumbnail_label.pixmap() is not None
+        assert second_row.thumbnail_label.pixmap().isNull() is False
+        assert first_row is view.target_list.itemWidget(view.target_list.item(0))
+
+    def test_get_visible_target_row_range_uses_list_viewport(self, qtbot) -> None:
+        view = ExtractView()
+        qtbot.addWidget(view)
+        view.resize(900, 500)
+        view.show()
+
+        items = [_make_target_item(f"e{i}", "doc-1", i, "a.pdf") for i in range(20)]
+        view.update_ui(ExtractUiState(target_items=items))
+        qtbot.wait(50)
+
+        visible_range = view.get_visible_target_row_range()
+
+        assert visible_range is not None
+        assert 0 <= visible_range[0] <= visible_range[1] < 20
+
+    def test_get_visible_target_row_range_moves_after_scroll(self, qtbot) -> None:
+        view = ExtractView()
+        qtbot.addWidget(view)
+        view.resize(900, 500)
+        view.show()
+
+        items = [_make_target_item(f"e{i}", "doc-1", i, "a.pdf") for i in range(40)]
+        view.update_ui(ExtractUiState(target_items=items))
+        qtbot.wait(50)
+
+        initial_range = view.get_visible_target_row_range()
+        view.target_list.verticalScrollBar().setValue(view.target_list.verticalScrollBar().maximum())
+        qtbot.wait(50)
+        scrolled_range = view.get_visible_target_row_range()
+
+        assert initial_range is not None
+        assert scrolled_range is not None
+        assert scrolled_range[0] >= initial_range[0]
 
 
 # ── TargetPageList DnD ────────────────────────────────
@@ -347,6 +632,27 @@ class TestTargetPageListDnD:
 
         assert len(received) == 1
         assert received[0] == pages
+
+    def test_rejects_external_file_drag(self, qtbot, tmp_path: Path) -> None:
+        tl = TargetPageList()
+        qtbot.addWidget(tl)
+
+        pdf_path = tmp_path / "target-drop.pdf"
+        pdf_path.write_bytes(b"%PDF-1.4\n")
+
+        mime = QMimeData()
+        mime.setUrls([QUrl.fromLocalFile(str(pdf_path))])
+        event = QDragEnterEvent(
+            QPoint(10, 10),
+            Qt.DropAction.CopyAction,
+            mime,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+
+        tl.dragEnterEvent(event)
+
+        assert event.isAccepted() is False
 
     def test_selection_emits_ids(self, qtbot) -> None:
         view = ExtractView()
@@ -640,13 +946,33 @@ class TestSignalEmission:
         with qtbot.waitSignal(view.target_zoom_reset_requested, timeout=500):
             view.btn_target_zoom_reset.click()
 
+    def test_source_scroll_emits_viewport_changed(self, qtbot) -> None:
+        view = ExtractView()
+        qtbot.addWidget(view)
+
+        scrollbar = view.get_source_scroll_area().verticalScrollBar()
+        scrollbar.setRange(0, 10)
+
+        with qtbot.waitSignal(view.source_viewport_changed, timeout=500):
+            scrollbar.setValue(1)
+
+    def test_target_scroll_emits_viewport_changed(self, qtbot) -> None:
+        view = ExtractView()
+        qtbot.addWidget(view)
+
+        scrollbar = view.target_list.verticalScrollBar()
+        scrollbar.setRange(0, 10)
+
+        with qtbot.waitSignal(view.target_viewport_changed, timeout=500):
+            scrollbar.setValue(1)
+
 
 # ── 外部ファイル DnD ──────────────────────────────────
 
 
 class TestExternalFileDnD:
 
-    def test_drop_pdf_emits_paths(self, qtbot, tmp_path: Path) -> None:
+    def test_drop_pdf_on_view_emits_paths(self, qtbot, tmp_path: Path) -> None:
         view = ExtractView()
         qtbot.addWidget(view)
 
@@ -668,6 +994,32 @@ class TestExternalFileDnD:
 
         view.dropEvent(event)
 
+        assert len(received) == 1
+        assert Path(received[0][0]) == pdf_path
+
+    def test_drop_pdf_on_source_viewport_emits_paths(self, qtbot, tmp_path: Path) -> None:
+        view = ExtractView()
+        qtbot.addWidget(view)
+
+        received: list[list[str]] = []
+        view.files_dropped.connect(received.append)
+
+        pdf_path = tmp_path / "dropped-on-source.pdf"
+        pdf_path.write_bytes(b"%PDF-1.4\n")
+
+        mime = QMimeData()
+        mime.setUrls([QUrl.fromLocalFile(str(pdf_path))])
+        event = QDropEvent(
+            QPointF(10, 10),
+            Qt.DropAction.CopyAction,
+            mime,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+
+        handled = view.eventFilter(view.get_source_scroll_area().viewport(), event)
+
+        assert handled is True
         assert len(received) == 1
         assert Path(received[0][0]) == pdf_path
 
@@ -711,3 +1063,91 @@ class TestCollectSelectedRefs:
         assert ("doc-1", 0) in refs
         assert ("doc-2", 1) in refs
         assert len(refs) == 2
+
+
+# ── Source ページ DnD ────────────────────────────────
+
+
+class TestSourcePageDnD:
+
+    def test_build_source_drag_pages_uses_current_selection(self, qtbot) -> None:
+        view = ExtractView()
+        qtbot.addWidget(view)
+
+        state = ExtractUiState(source_sections=[
+            _make_source_section("doc-1", "a.pdf", 4, selected_indices={1, 3}),
+        ])
+        view.update_ui(state)
+
+        pages = view._build_source_drag_pages("doc-1", 1)
+
+        assert pages == [
+            {"doc_id": "doc-1", "page_index": 1},
+            {"doc_id": "doc-1", "page_index": 3},
+        ]
+
+    def test_build_source_drag_pages_falls_back_to_dragged_page(self, qtbot) -> None:
+        view = ExtractView()
+        qtbot.addWidget(view)
+
+        state = ExtractUiState(source_sections=[
+            _make_source_section("doc-1", "a.pdf", 4, selected_indices={1}),
+        ])
+        view.update_ui(state)
+
+        pages = view._build_source_drag_pages("doc-1", 2)
+
+        assert pages == [{"doc_id": "doc-1", "page_index": 2}]
+
+    def test_page_widget_begin_drag_sets_extract_pages_mime(self, qtbot, monkeypatch) -> None:
+        captured: dict[str, object] = {}
+
+        class FakeDrag:
+            def __init__(self, source) -> None:
+                captured["source"] = source
+                captured["mime"] = None
+
+            def setMimeData(self, mime) -> None:
+                captured["mime"] = mime
+
+            def setPixmap(self, pixmap) -> None:
+                captured["pixmap"] = pixmap
+
+            def exec(self, action):
+                captured["action"] = action
+                return action
+
+        monkeypatch.setattr("view.extract.extract_view.QDrag", FakeDrag)
+
+        view = ExtractView()
+        qtbot.addWidget(view)
+        view.update_ui(ExtractUiState(source_sections=[
+            _make_source_section("doc-1", "a.pdf", 4, selected_indices={1, 3}),
+        ]))
+
+        page_widget = view.get_source_section_widgets()[0].page_widgets[1]
+        started = page_widget._begin_drag()
+
+        assert started is True
+        mime = captured["mime"]
+        assert mime is not None
+        pages = json.loads(bytes(mime.data(EXTRACT_PAGES_MIME)).decode("utf-8"))
+        assert pages == [
+            {"doc_id": "doc-1", "page_index": 1},
+            {"doc_id": "doc-1", "page_index": 3},
+        ]
+
+    def test_page_widget_drag_disabled_while_running(self, qtbot) -> None:
+        view = ExtractView()
+        qtbot.addWidget(view)
+        view.update_ui(ExtractUiState(source_sections=[
+            _make_source_section("doc-1", "a.pdf", 2, selected_indices={0}),
+        ]))
+        page_widget = view.get_source_section_widgets()[0].page_widgets[0]
+
+        view.update_ui(ExtractUiState(
+            source_sections=[_make_source_section("doc-1", "a.pdf", 2, selected_indices={0})],
+            is_running=True,
+        ))
+
+        assert page_widget._can_start_drag() is False

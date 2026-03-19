@@ -70,7 +70,7 @@ class PageThumbnailLoader:
             for raw_path, page_index in requests:
                 normalized = str(Path(raw_path))
                 key = PageThumbnailKey(path=normalized, page_index=page_index)
-                if key in self._cache or key in self._pending:
+                if not self._can_enqueue_locked(key):
                     continue
                 self._pending.add(key)
                 to_load.append((normalized, page_index))
@@ -116,6 +116,18 @@ class PageThumbnailLoader:
         with self._lock:
             return key in self._pending
 
+    def can_request(self, path: str, page_index: int) -> bool:
+        """再要求可能かどうかを返す。
+
+        cache と pending だけが再要求抑止の根拠であり、LRU 退避で cache から外れた
+        ページは再び True になる。Presenter はこの前提で可視ページ再訪時に
+        request_thumbnails を再発行できる。
+        """
+        normalized = str(Path(path))
+        key = PageThumbnailKey(path=normalized, page_index=page_index)
+        with self._lock:
+            return self._can_enqueue_locked(key)
+
     def invalidate(self, path: str) -> None:
         """指定パスの全ページキャッシュを無効化する。"""
         normalized = str(Path(path))
@@ -133,6 +145,10 @@ class PageThumbnailLoader:
         while len(self._cache) > self._cache_limit:
             self._cache.popitem(last=False)
 
+    def _can_enqueue_locked(self, key: PageThumbnailKey) -> bool:
+        """ロック保持中に再要求可能かを判定する。"""
+        return key not in self._cache and key not in self._pending
+
     def _load_batch(self, pages: list[tuple[str, int]]) -> None:
         try:
             # パスごとにグループ化して PDF を開く回数を最小化する
@@ -148,6 +164,7 @@ class PageThumbnailLoader:
 
     def _load_pages_from_file(self, path: str, indices: list[int]) -> None:
         try:
+            # 1 バッチ中は PDF を 1 回だけ開き、各ページは同じ fitz.Document から描画する。
             doc = fitz.open(path)
         except Exception as exc:
             for page_index in indices:
@@ -185,6 +202,9 @@ class PageThumbnailLoader:
                 THUMBNAIL_BASE_SIZE / max(1.0, rect.height),
             )
             zoom = max(0.2, zoom)
+
+            # PyMuPDF でページを rasterize し、その結果を Pillow で縮小して PNG 化する。
+            # 縮小ごとに PDF を reopen しないことがこのフローの前提。
             pixmap = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False)
 
             image = Image.frombytes("RGB", (pixmap.width, pixmap.height), pixmap.samples)

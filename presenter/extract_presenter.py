@@ -23,6 +23,9 @@ from view.main_window import MainWindow
 class ExtractPresenter:
     """Model と PDF 抽出画面 View を調停する Presenter。"""
 
+    SOURCE_PAGE_BUFFER = 4
+    TARGET_ROW_BUFFER = 6
+
     def __init__(self, view: MainWindow) -> None:
         self._view = view
         self._session = ExtractSession()
@@ -48,6 +51,7 @@ class ExtractPresenter:
         ev.source_zoom_in_requested.connect(self.zoom_in_source)
         ev.source_zoom_out_requested.connect(self.zoom_out_source)
         ev.source_zoom_reset_requested.connect(self.reset_source_zoom)
+        ev.source_viewport_changed.connect(self._on_source_viewport_changed)
         ev.files_dropped.connect(self.handle_dropped_paths)
 
         # Target 操作
@@ -59,6 +63,7 @@ class ExtractPresenter:
         ev.target_zoom_in_requested.connect(self.zoom_in_target)
         ev.target_zoom_out_requested.connect(self.zoom_out_target)
         ev.target_zoom_reset_requested.connect(self.reset_target_zoom)
+        ev.target_viewport_changed.connect(self._on_target_viewport_changed)
         ev.target_list.selection_changed_ids.connect(self._on_target_selection_changed)
         ev.target_list.order_changed.connect(self._on_target_order_changed)
         ev.target_list.pages_dropped_from_source.connect(self._on_pages_dropped_from_source)
@@ -148,6 +153,7 @@ class ExtractPresenter:
         self._session.add_to_target([ref])
         self._reset_runtime_feedback()
         self._refresh_ui()
+        self._request_target_thumbnails(reason="source-double-click")
 
     def set_source_selection(self, refs: list[SourcePageRef]) -> None:
         """外部 (Ctrl+A 系) から選択を一括セットする。"""
@@ -165,6 +171,7 @@ class ExtractPresenter:
         self._session.add_to_target(list(self._session.selected_source_pages))
         self._reset_runtime_feedback()
         self._refresh_ui()
+        self._request_target_thumbnails(reason="extract-selected")
 
     def remove_selected_targets(self) -> None:
         if self._processor.is_running:
@@ -173,6 +180,7 @@ class ExtractPresenter:
         if self._session.remove_selected_targets():
             self._reset_runtime_feedback()
             self._refresh_ui()
+            self._request_target_thumbnails(reason="target-removed")
 
     def clear_target(self) -> None:
         if self._processor.is_running:
@@ -181,6 +189,7 @@ class ExtractPresenter:
         if self._session.clear_target():
             self._reset_runtime_feedback()
             self._refresh_ui()
+            self._request_target_thumbnails(reason="target-cleared")
 
     def move_target_up(self) -> None:
         if self._processor.is_running:
@@ -188,6 +197,7 @@ class ExtractPresenter:
         if self._session.move_selected_target_up():
             self._reset_runtime_feedback()
             self._refresh_ui()
+            self._request_target_thumbnails(reason="target-move-up")
 
     def move_target_down(self) -> None:
         if self._processor.is_running:
@@ -195,6 +205,7 @@ class ExtractPresenter:
         if self._session.move_selected_target_down():
             self._reset_runtime_feedback()
             self._refresh_ui()
+            self._request_target_thumbnails(reason="target-move-down")
 
     def _on_target_selection_changed(self, ids: list[str]) -> None:
         self._session.set_selected_target_ids(ids)
@@ -206,6 +217,7 @@ class ExtractPresenter:
         if self._session.reorder_target(ordered_ids):
             self._reset_runtime_feedback()
             self._refresh_ui()
+            self._request_target_thumbnails(reason="target-reordered")
 
     def _on_pages_dropped_from_source(self, pages: list[dict]) -> None:
         """Target リストへ Source からドロップされたページを追加する。"""
@@ -216,32 +228,47 @@ class ExtractPresenter:
         self._session.add_to_target(refs)
         self._reset_runtime_feedback()
         self._refresh_ui()
+        self._request_target_thumbnails(reason="target-drop")
+
+    def _on_source_viewport_changed(self) -> None:
+        """Source 表示領域の変化をサムネイル要求制御へ集約する。"""
+        self._request_source_thumbnails(reason="source-viewport")
+
+    def _on_target_viewport_changed(self) -> None:
+        """Target 表示領域の変化をサムネイル要求制御へ集約する。"""
+        self._request_target_thumbnails(reason="target-viewport")
 
     # ── ズーム ───────────────────────────────────────────
 
     def zoom_in_source(self) -> None:
         self._session.zoom_in_source()
         self._refresh_ui()
+        self._request_source_thumbnails(reason="source-zoom-in")
 
     def zoom_out_source(self) -> None:
         self._session.zoom_out_source()
         self._refresh_ui()
+        self._request_source_thumbnails(reason="source-zoom-out")
 
     def reset_source_zoom(self) -> None:
         self._session.reset_source_zoom()
         self._refresh_ui()
+        self._request_source_thumbnails(reason="source-zoom-reset")
 
     def zoom_in_target(self) -> None:
         self._session.zoom_in_target()
         self._refresh_ui()
+        self._request_target_thumbnails(reason="target-zoom-in")
 
     def zoom_out_target(self) -> None:
         self._session.zoom_out_target()
         self._refresh_ui()
+        self._request_target_thumbnails(reason="target-zoom-out")
 
     def reset_target_zoom(self) -> None:
         self._session.reset_target_zoom()
         self._refresh_ui()
+        self._request_target_thumbnails(reason="target-zoom-reset")
 
     # ── 出力 / 実行 ─────────────────────────────────────
 
@@ -357,19 +384,9 @@ class ExtractPresenter:
             accepted.append(normalized)
 
         if accepted:
-            # サムネイルリクエスト: 追加した全ページ
-            thumb_requests: list[tuple[str, int]] = []
-            for path in accepted:
-                for doc in self._session.source_documents:
-                    if doc.path == path:
-                        for pi in range(doc.page_count):
-                            thumb_requests.append((path, pi))
-                        break
-            if thumb_requests:
-                self._thumbnail_loader.request_thumbnails(thumb_requests)
-                self._ensure_thumbnail_polling()
             self._reset_runtime_feedback()
             self._refresh_ui()
+            self._request_source_thumbnails_for_paths(accepted, reason="source-added")
 
         if ignored:
             preview = "\n".join(f"- {p}" for p in ignored[:5])
@@ -392,7 +409,8 @@ class ExtractPresenter:
     def _poll_thumbnail_results(self) -> None:
         results = self._thumbnail_loader.poll_results()
         if results:
-            self._refresh_ui()
+            self._apply_thumbnail_results(results)
+            self._request_visible_thumbnails(reason="thumbnail-results")
 
         if self._thumbnail_loader.is_loading:
             self._thumbnail_poll_job_id = self._view.schedule(100, self._poll_thumbnail_results)
@@ -467,7 +485,121 @@ class ExtractPresenter:
     # ── 内部: UI 更新 ────────────────────────────────────
 
     def _refresh_ui(self) -> None:
+        """Session の全体状態を View へ同期する境界。
+
+        Source/Target の構造や選択、操作可否が変わる更新はここを通す。
+        サムネイル到着のような高頻度イベントは _apply_thumbnail_results() 側で
+        差分反映し、将来 model/view + delegate 化する際もこの責務境界を維持する。
+        """
         self._view.update_extract_ui(self._build_ui_state())
+
+    def _request_source_thumbnails(self, reason: str) -> list[tuple[str, int]]:
+        """Source 用サムネイル要求を集約する。Phase 2 で可視範囲要求へ置き換える。"""
+        del reason
+        return self._issue_thumbnail_requests(self._collect_source_thumbnail_requests())
+
+    def _request_source_thumbnails_for_paths(self, paths: list[str], reason: str) -> list[tuple[str, int]]:
+        """追加された PDF 群に対する Source サムネイル要求を専用責務へ隔離する。"""
+        del reason
+        requested_paths = {str(Path(path)) for path in paths}
+        return self._issue_thumbnail_requests(
+            self._collect_source_thumbnail_requests(requested_paths),
+        )
+
+    def _request_target_thumbnails(self, reason: str) -> list[tuple[str, int]]:
+        """Target 用サムネイル要求を集約する。Phase 2 で可視範囲要求へ置き換える。"""
+        del reason
+        return self._issue_thumbnail_requests(self._collect_target_thumbnail_requests())
+
+    def _request_visible_thumbnails(self, reason: str) -> list[tuple[str, int]]:
+        """現在可視な Source/Target のサムネイルをまとめて再評価する。"""
+        del reason
+        requests = self._collect_source_thumbnail_requests()
+        requests.extend(self._collect_target_thumbnail_requests())
+        return self._issue_thumbnail_requests(requests)
+
+    def _collect_source_thumbnail_requests(
+        self,
+        only_paths: set[str] | None = None,
+    ) -> list[tuple[str, int]]:
+        """現在の Source 可視範囲に必要なサムネイル要求集合を返す。"""
+        visible_refs = self._view.extract_view.get_visible_source_page_refs()
+        visible_ranges: dict[str, tuple[int, int]] = {}
+
+        for doc_id, page_index in visible_refs:
+            doc = self._session.get_source_document(doc_id)
+            if doc is None:
+                continue
+            if only_paths is not None and doc.path not in only_paths:
+                continue
+            start_end = visible_ranges.get(doc_id)
+            if start_end is None:
+                visible_ranges[doc_id] = (page_index, page_index)
+                continue
+            visible_ranges[doc_id] = (
+                min(start_end[0], page_index),
+                max(start_end[1], page_index),
+            )
+
+        requests: list[tuple[str, int]] = []
+        for doc in self._session.source_documents:
+            if only_paths is not None and doc.path not in only_paths:
+                continue
+            visible_range = visible_ranges.get(doc.id)
+            if visible_range is None:
+                continue
+            start = max(0, visible_range[0] - self.SOURCE_PAGE_BUFFER)
+            end = min(doc.page_count - 1, visible_range[1] + self.SOURCE_PAGE_BUFFER)
+            for page_index in self._build_buffered_page_order(start, end, *visible_range):
+                if self._thumbnail_loader.can_request(doc.path, page_index):
+                    requests.append((doc.path, page_index))
+        return requests
+
+    def _collect_target_thumbnail_requests(self) -> list[tuple[str, int]]:
+        """現在の Target 可視範囲に必要なサムネイル要求集合を返す。"""
+        visible_range = self._view.extract_view.get_visible_target_row_range()
+        if visible_range is None:
+            return []
+
+        start = max(0, visible_range[0] - self.TARGET_ROW_BUFFER)
+        end = min(len(self._session.target_entries) - 1, visible_range[1] + self.TARGET_ROW_BUFFER)
+        requests: list[tuple[str, int]] = []
+        seen: set[tuple[str, int]] = set()
+        for row_index in self._build_buffered_page_order(start, end, visible_range[0], visible_range[1]):
+            entry = self._session.target_entries[row_index]
+            doc = self._session.get_source_document(entry.source_ref.doc_id)
+            if doc is None:
+                continue
+            request = (doc.path, entry.source_ref.page_index)
+            if request in seen:
+                continue
+            if not self._thumbnail_loader.can_request(*request):
+                continue
+            seen.add(request)
+            requests.append(request)
+        return requests
+
+    def _build_buffered_page_order(
+        self,
+        start: int,
+        end: int,
+        visible_start: int,
+        visible_end: int,
+    ) -> list[int]:
+        """可視範囲を最後に要求して LRU 上で残りやすくする。"""
+        before_visible = list(range(start, max(start, visible_start)))
+        after_visible = list(range(min(end, visible_end) + 1, end + 1))
+        visible = list(range(max(start, visible_start), min(end, visible_end) + 1))
+        return before_visible + after_visible + visible
+
+    def _issue_thumbnail_requests(self, requests: list[tuple[str, int]]) -> list[tuple[str, int]]:
+        """サムネイル要求発行とポーリング起動を一箇所に集約する。"""
+        if not requests:
+            return []
+        issued = self._thumbnail_loader.request_thumbnails(requests)
+        if issued:
+            self._ensure_thumbnail_polling()
+        return issued
 
     def _reset_runtime_feedback(self) -> None:
         if self._session.is_running:
@@ -477,6 +609,34 @@ class ExtractPresenter:
         self._last_status = "idle"
         self._last_finished_output = None
         self._last_error_message = None
+
+    def _apply_thumbnail_results(self, results: list[object]) -> None:
+        """取得済みサムネイルだけを View 差分 API へ流す境界。"""
+        for result in results:
+            path = getattr(result, "path", "")
+            page_index = getattr(result, "page_index", -1)
+            status = getattr(result, "status", "idle")
+            image_bytes = getattr(result, "image_bytes", None)
+
+            doc = next((source for source in self._session.source_documents if source.path == path), None)
+            if doc is None:
+                continue
+
+            self._view.extract_view.update_source_page_thumbnail(
+                doc.id,
+                page_index,
+                image_bytes,
+                status,
+            )
+
+            for entry in self._session.target_entries:
+                if entry.source_ref.doc_id != doc.id or entry.source_ref.page_index != page_index:
+                    continue
+                self._view.extract_view.update_target_entry_thumbnail(
+                    entry.id,
+                    image_bytes,
+                    status,
+                )
 
     def _build_ui_state(self) -> ExtractUiState:
         # Source セクション構築

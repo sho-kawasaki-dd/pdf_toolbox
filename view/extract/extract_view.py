@@ -9,12 +9,13 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable, Sequence
 
-from PySide6.QtCore import QMimeData, Qt, Signal
-from PySide6.QtGui import QKeySequence, QPixmap, QShortcut
+from PySide6.QtCore import QEvent, QMimeData, QPoint, QRect, Qt, Signal
+from PySide6.QtGui import QDrag, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QApplication,
     QFrame,
     QGroupBox,
     QHBoxLayout,
@@ -122,6 +123,10 @@ class PageThumbnailWidget(QWidget):
         self._is_selected = False
         self._zoom_percent = zoom_percent
         self._thumbnail_png_bytes: bytes | None = None
+        self._thumbnail_status = "idle"
+        self._drag_start_pos: QPoint | None = None
+        self._drag_payload_provider: Callable[[str, int], list[dict[str, object]]] | None = None
+        self._drag_enabled_provider: Callable[[], bool] | None = None
 
         size = self._display_size()
         self.setFixedSize(size + 8, size + 28)
@@ -165,11 +170,13 @@ class PageThumbnailWidget(QWidget):
             self._update_border()
 
     def set_thumbnail(self, png_bytes: bytes | None) -> None:
-        self._thumbnail_png_bytes = png_bytes
+        self.set_thumbnail_state(png_bytes, "ready" if png_bytes else "loading")
+
+    def _apply_thumbnail_state(self) -> None:
         size = self._display_size()
-        if png_bytes:
+        if self._thumbnail_png_bytes:
             pixmap = QPixmap()
-            if pixmap.loadFromData(png_bytes, "PNG"):
+            if pixmap.loadFromData(self._thumbnail_png_bytes):
                 scaled = pixmap.scaled(
                     size, size,
                     Qt.AspectRatioMode.KeepAspectRatio,
@@ -179,15 +186,31 @@ class PageThumbnailWidget(QWidget):
                 self._image_label.setText("")
                 return
         self._image_label.setPixmap(QPixmap())
-        self._image_label.setText("読込中")
+        self._image_label.setText("エラー" if self._thumbnail_status == "error" else "読込中")
+
+    def set_thumbnail_state(self, png_bytes: bytes | None, status: str) -> None:
+        if self._thumbnail_png_bytes == png_bytes and self._thumbnail_status == status:
+            return
+        self._thumbnail_png_bytes = png_bytes
+        self._thumbnail_status = status
+        self._apply_thumbnail_state()
 
     def set_zoom(self, zoom_percent: int) -> None:
+        if self._zoom_percent == zoom_percent:
+            return
         self._zoom_percent = zoom_percent
         size = self._display_size()
         self.setFixedSize(size + 8, size + 28)
         self._image_label.setFixedSize(size, size)
-        # サムネイル再描画
-        self.set_thumbnail(self._thumbnail_png_bytes)
+        self._apply_thumbnail_state()
+
+    def set_drag_context(
+        self,
+        payload_provider: Callable[[str, int], list[dict[str, object]]],
+        enabled_provider: Callable[[], bool],
+    ) -> None:
+        self._drag_payload_provider = payload_provider
+        self._drag_enabled_provider = enabled_provider
 
     def _display_size(self) -> int:
         return max(32, int(self.THUMBNAIL_BASE_PX * self._zoom_percent / 100))
@@ -207,12 +230,57 @@ class PageThumbnailWidget(QWidget):
             )
 
     def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_start_pos = event.position().toPoint()
         self.clicked.emit(self._doc_id, self._page_index, event)
         super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:
+        if (
+            self._drag_start_pos is not None
+            and event.buttons() & Qt.MouseButton.LeftButton
+            and self._can_start_drag()
+        ):
+            distance = (event.position().toPoint() - self._drag_start_pos).manhattanLength()
+            if distance >= QApplication.startDragDistance():
+                self._begin_drag()
+                return
+        super().mouseMoveEvent(event)
 
     def mouseDoubleClickEvent(self, event) -> None:
         self.double_clicked.emit(self._doc_id, self._page_index)
         super().mouseDoubleClickEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:
+        self._drag_start_pos = None
+        super().mouseReleaseEvent(event)
+
+    def _can_start_drag(self) -> bool:
+        if self._drag_payload_provider is None:
+            return False
+        if self._drag_enabled_provider is None:
+            return True
+        return self._drag_enabled_provider()
+
+    def _begin_drag(self) -> bool:
+        if self._drag_payload_provider is None:
+            return False
+
+        pages = self._drag_payload_provider(self._doc_id, self._page_index)
+        if not pages:
+            return False
+
+        mime = QMimeData()
+        mime.setData(EXTRACT_PAGES_MIME, json.dumps(pages).encode("utf-8"))
+
+        drag = QDrag(self)
+        drag.setMimeData(mime)
+        if self._image_label.pixmap() and not self._image_label.pixmap().isNull():
+            drag.setPixmap(self._image_label.pixmap())
+
+        self._drag_start_pos = None
+        drag.exec(Qt.DropAction.CopyAction)
+        return True
 
 
 # ── SourceSectionWidget ────────────────────────────────
@@ -234,37 +302,30 @@ class SourceSectionWidget(QWidget):
         self._doc_id = section.doc_id
         self._zoom_percent = zoom_percent
         self._page_widgets: list[PageThumbnailWidget] = []
+        self._page_widget_by_index: dict[int, PageThumbnailWidget] = {}
+        self._drag_payload_provider: Callable[[str, int], list[dict[str, object]]] | None = None
+        self._drag_enabled_provider: Callable[[], bool] | None = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(4)
 
         # セクションヘッダー
-        header = QLabel(f"📄 {section.filename}  ({section.page_count}ページ)")
-        header.setFont(make_app_font(11, bold=True))
-        header.setStyleSheet(
+        self._header_label = QLabel()
+        self._header_label.setFont(make_app_font(11, bold=True))
+        self._header_label.setStyleSheet(
             "background-color: #f1f5f9;"
             " padding: 6px 8px;"
             " border-radius: 4px;"
         )
-        layout.addWidget(header)
+        layout.addWidget(self._header_label)
 
         # ページグリッド用コンテナ
         self._grid_container = QWidget()
         self._grid_layout = _FlowLayout(self._grid_container, margin=4, spacing=4)
         layout.addWidget(self._grid_container)
 
-        for page_item in section.pages:
-            pw = PageThumbnailWidget(
-                page_item.doc_id, page_item.page_index, zoom_percent,
-            )
-            pw.set_selected(page_item.is_selected)
-            if page_item.thumbnail_png_bytes:
-                pw.set_thumbnail(page_item.thumbnail_png_bytes)
-            pw.clicked.connect(self.page_clicked.emit)
-            pw.double_clicked.connect(self.page_double_clicked.emit)
-            self._grid_layout.addWidget(pw)
-            self._page_widgets.append(pw)
+        self.update_section(section, zoom_percent)
 
     @property
     def doc_id(self) -> str:
@@ -273,6 +334,63 @@ class SourceSectionWidget(QWidget):
     @property
     def page_widgets(self) -> list[PageThumbnailWidget]:
         return self._page_widgets
+
+    def set_drag_context(
+        self,
+        payload_provider: Callable[[str, int], list[dict[str, object]]],
+        enabled_provider: Callable[[], bool],
+    ) -> None:
+        self._drag_payload_provider = payload_provider
+        self._drag_enabled_provider = enabled_provider
+        for page_widget in self._page_widgets:
+            page_widget.set_drag_context(payload_provider, enabled_provider)
+
+    def update_section(self, section: SourceSectionItem, zoom_percent: int) -> None:
+        self._zoom_percent = zoom_percent
+        self._header_label.setText(f"📄 {section.filename}  ({section.page_count}ページ)")
+
+        removed_indices = set(self._page_widget_by_index)
+        ordered_widgets: list[PageThumbnailWidget] = []
+        for page_item in section.pages:
+            page_widget = self._page_widget_by_index.get(page_item.page_index)
+            if page_widget is None:
+                page_widget = PageThumbnailWidget(
+                    page_item.doc_id,
+                    page_item.page_index,
+                    zoom_percent,
+                )
+                page_widget.clicked.connect(self.page_clicked.emit)
+                page_widget.double_clicked.connect(self.page_double_clicked.emit)
+                if self._drag_payload_provider is not None and self._drag_enabled_provider is not None:
+                    page_widget.set_drag_context(
+                        self._drag_payload_provider,
+                        self._drag_enabled_provider,
+                    )
+                self._page_widget_by_index[page_item.page_index] = page_widget
+            removed_indices.discard(page_item.page_index)
+            page_widget.set_zoom(zoom_percent)
+            page_widget.set_selected(page_item.is_selected)
+            page_widget.set_thumbnail_state(page_item.thumbnail_png_bytes, page_item.thumbnail_status)
+            ordered_widgets.append(page_widget)
+
+        for page_index in removed_indices:
+            page_widget = self._page_widget_by_index.pop(page_index)
+            page_widget.setParent(None)
+            page_widget.deleteLater()
+
+        self._page_widgets = ordered_widgets
+        self._grid_layout.set_widgets(ordered_widgets)
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._grid_layout.refresh()
+
+    def update_page_thumbnail(self, page_index: int, png_bytes: bytes | None, status: str) -> bool:
+        page_widget = self._page_widget_by_index.get(page_index)
+        if page_widget is None:
+            return False
+        page_widget.set_thumbnail_state(png_bytes, status)
+        return True
 
 
 # ── FlowLayout ─────────────────────────────────────────
@@ -292,30 +410,65 @@ class _FlowLayout(QVBoxLayout):
         margin: int = 0,
         spacing: int = 4,
     ) -> None:
-        super().__init__(parent)
+        super().__init__(parent)  # type: ignore[arg-type]
         self.setContentsMargins(margin, margin, margin, margin)
         self.setSpacing(spacing)
         self._widgets: list[QWidget] = []
         self._spacing = spacing
+        self._last_available_width = -1
+        self._last_widget_signature: tuple[tuple[int, int], ...] = ()
 
     def addWidget(self, widget: QWidget, *args, **kwargs) -> None:  # type: ignore[override]
-        self._widgets.append(widget)
-        # 行に配置するのは rebuild で行う
+        if widget not in self._widgets:
+            self._widgets.append(widget)
+        self.refresh(force=True)
+
+    def removeWidget(self, widget: QWidget) -> None:  # type: ignore[override]
+        if widget in self._widgets:
+            self._widgets.remove(widget)
+            self.refresh(force=True)
+
+    def set_widgets(self, widgets: Sequence[QWidget]) -> None:
+        self._widgets = list(widgets)
+        self.refresh()
+
+    def refresh(self, force: bool = False) -> None:
+        available_width = self._available_width()
+        signature = self._build_signature()
+        if not force and available_width == self._last_available_width and signature == self._last_widget_signature:
+            return
         self._rebuild()
+        self._last_available_width = available_width
+        self._last_widget_signature = signature
+
+    def _available_width(self) -> int:
+        parent = self.parentWidget()
+        if parent is None:
+            return 800
+        margins = self.contentsMargins()
+        return max(1, parent.width() - margins.left() - margins.right())
+
+    def _build_signature(self) -> tuple[tuple[int, int], ...]:
+        return tuple((id(widget), widget.sizeHint().width()) for widget in self._widgets)
 
     def _rebuild(self) -> None:
         # 既存の行レイアウトを削除
         while self.count():
             item = self.takeAt(0)
-            if item.layout():
-                while item.layout().count():
-                    child = item.layout().takeAt(0)
+            if item is None:
+                continue
+            layout = item.layout()
+            if layout is not None:
+                while layout.count():
+                    child = layout.takeAt(0)
                     # ウィジェットは保持するので hide しない
-                    if child.widget():
-                        child.widget().setParent(None)
+                    if child is None:
+                        continue
+                    child_widget = child.widget()
+                    if child_widget is not None:
+                        child_widget.setParent(None)
 
-        parent = self.parentWidget()
-        available_width = parent.width() if parent else 800
+        available_width = self._available_width()
 
         row = QHBoxLayout()
         row.setSpacing(self._spacing)
@@ -349,7 +502,7 @@ class TargetPageList(QListWidget):
     selection_changed_ids = Signal(list)  # list[str] entry_ids
 
     def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
+        super().__init__(parent)  # type: ignore[arg-type]
         self.setAcceptDrops(True)
         self.setDragEnabled(True)
         self.setDropIndicatorShown(True)
@@ -357,6 +510,7 @@ class TargetPageList(QListWidget):
         self.setDefaultDropAction(Qt.DropAction.MoveAction)
         self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.setAlternatingRowColors(True)
+        self.setUniformItemSizes(True)
         self.itemSelectionChanged.connect(self._emit_selection_ids)
 
     def dragEnterEvent(self, event) -> None:
@@ -364,9 +518,11 @@ class TargetPageList(QListWidget):
             event.acceptProposedAction()
             return
         mime = event.mimeData()
-        if mime.hasFormat(EXTRACT_PAGES_MIME) or mime.hasUrls():
+        if mime.hasFormat(EXTRACT_PAGES_MIME):
             event.acceptProposedAction()
             return
+        event.ignore()
+        return
         super().dragEnterEvent(event)
 
     def dragMoveEvent(self, event) -> None:
@@ -374,9 +530,11 @@ class TargetPageList(QListWidget):
             event.acceptProposedAction()
             return
         mime = event.mimeData()
-        if mime.hasFormat(EXTRACT_PAGES_MIME) or mime.hasUrls():
+        if mime.hasFormat(EXTRACT_PAGES_MIME):
             event.acceptProposedAction()
             return
+        event.ignore()
+        return
         super().dragMoveEvent(event)
 
     def dropEvent(self, event) -> None:
@@ -393,6 +551,9 @@ class TargetPageList(QListWidget):
                 self.pages_dropped_from_source.emit(pages)
                 event.acceptProposedAction()
             return
+
+        event.ignore()
+        return
 
         super().dropEvent(event)
 
@@ -414,42 +575,83 @@ class TargetRow(QWidget):
 
     def __init__(self, item: TargetItem, zoom_percent: int = 100, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self._zoom_percent = zoom_percent
+        self._title_text = ""
+        self._thumbnail_png_bytes: bytes | None = None
+        self._thumbnail_status = "idle"
         root = QHBoxLayout(self)
         root.setContentsMargins(4, 4, 4, 4)
         root.setSpacing(8)
 
-        thumb_size = max(32, int(48 * zoom_percent / 100))
         self.thumbnail_label = QLabel()
         self.thumbnail_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.thumbnail_label.setFixedSize(thumb_size, thumb_size)
         self.thumbnail_label.setStyleSheet(
             "background-color: #e2e8f0;"
             " border: 1px solid #cbd5e1;"
             " border-radius: 4px;"
         )
-        self._apply_thumbnail(item, thumb_size)
         root.addWidget(self.thumbnail_label, stretch=0)
 
         text_layout = QVBoxLayout()
         text_layout.setSpacing(2)
-        title = QLabel(f"{item.source_filename} - p.{item.page_index + 1}")
-        title.setFont(make_app_font(11, bold=True))
-        text_layout.addWidget(title)
+        self.title_label = QLabel()
+        self.title_label.setFont(make_app_font(11, bold=True))
+        text_layout.addWidget(self.title_label)
         root.addLayout(text_layout, stretch=1)
+
+        self.update_item(item, zoom_percent)
 
     def _apply_thumbnail(self, item: TargetItem, size: int) -> None:
         if item.thumbnail_png_bytes:
             pixmap = QPixmap()
-            if pixmap.loadFromData(item.thumbnail_png_bytes, "PNG"):
+            if pixmap.loadFromData(item.thumbnail_png_bytes):
                 scaled = pixmap.scaled(
                     size, size,
                     Qt.AspectRatioMode.KeepAspectRatio,
                     Qt.TransformationMode.SmoothTransformation,
                 )
                 self.thumbnail_label.setPixmap(scaled)
+                self.thumbnail_label.setText("")
                 return
-        self.thumbnail_label.setText("…")
+        self.thumbnail_label.setPixmap(QPixmap())
+        self.thumbnail_label.setText("エラー" if item.thumbnail_status == "error" else "…")
         self.thumbnail_label.setFont(make_app_font(9))
+
+    def update_item(self, item: TargetItem, zoom_percent: int) -> None:
+        zoom_changed = self._zoom_percent != zoom_percent
+        self._zoom_percent = zoom_percent
+        thumb_size = max(32, int(48 * zoom_percent / 100))
+        if self.thumbnail_label.width() != thumb_size or self.thumbnail_label.height() != thumb_size:
+            self.thumbnail_label.setFixedSize(thumb_size, thumb_size)
+
+        title_text = f"{item.source_filename} - p.{item.page_index + 1}"
+        if self._title_text != title_text:
+            self._title_text = title_text
+            self.title_label.setText(title_text)
+
+        if (
+            zoom_changed
+            or self._thumbnail_png_bytes != item.thumbnail_png_bytes
+            or self._thumbnail_status != item.thumbnail_status
+        ):
+            self._thumbnail_png_bytes = item.thumbnail_png_bytes
+            self._thumbnail_status = item.thumbnail_status
+            self._apply_thumbnail(item, thumb_size)
+
+    def update_thumbnail(self, png_bytes: bytes | None, status: str) -> None:
+        if self._thumbnail_png_bytes == png_bytes and self._thumbnail_status == status:
+            return
+        self._thumbnail_png_bytes = png_bytes
+        self._thumbnail_status = status
+        item = TargetItem(
+            entry_id="",
+            doc_id="",
+            page_index=0,
+            source_filename="",
+            thumbnail_png_bytes=png_bytes,
+            thumbnail_status=status,
+        )
+        self._apply_thumbnail(item, self.thumbnail_label.width())
 
 
 # ── ExtractView ────────────────────────────────────────
@@ -467,6 +669,7 @@ class ExtractView(QWidget):
     source_zoom_in_requested = Signal()
     source_zoom_out_requested = Signal()
     source_zoom_reset_requested = Signal()
+    source_viewport_changed = Signal()
     # Target 操作シグナル
     extract_to_target_requested = Signal()
     remove_target_requested = Signal()
@@ -476,6 +679,7 @@ class ExtractView(QWidget):
     target_zoom_in_requested = Signal()
     target_zoom_out_requested = Signal()
     target_zoom_reset_requested = Signal()
+    target_viewport_changed = Signal()
     # 出力シグナル
     choose_output_requested = Signal()
     execute_requested = Signal()
@@ -486,6 +690,11 @@ class ExtractView(QWidget):
         super().__init__(parent)
         self._shortcuts: list[QShortcut] = []
         self._source_section_widgets: list[SourceSectionWidget] = []
+        self._source_section_widget_map: dict[str, SourceSectionWidget] = {}
+        self._source_layout_doc_ids: list[str] = []
+        self._target_list_items: dict[str, QListWidgetItem] = {}
+        self._target_row_widgets: dict[str, TargetRow] = {}
+        self._source_drag_enabled = True
         self._build_ui()
         self._setup_shortcuts()
 
@@ -598,6 +807,7 @@ class ExtractView(QWidget):
         self._source_scroll = QScrollArea()
         self._source_scroll.setWidgetResizable(True)
         self._source_scroll.setAcceptDrops(True)
+        self._source_scroll.viewport().setAcceptDrops(True)
         self._source_scroll.setStyleSheet(
             "QScrollArea { border: 1px solid #cbd5e1; border-radius: 6px; }"
         )
@@ -617,6 +827,12 @@ class ExtractView(QWidget):
         self._source_content_layout.insertWidget(0, self._source_empty_label)
 
         self._source_scroll.setWidget(self._source_content)
+        self._source_scroll.installEventFilter(self)
+        self._source_scroll.viewport().installEventFilter(self)
+        self._source_content.installEventFilter(self)
+        self._source_scroll.verticalScrollBar().valueChanged.connect(
+            lambda value: self.source_viewport_changed.emit(),
+        )
         source_layout.addWidget(self._source_scroll, stretch=1)
 
         self._splitter.addWidget(source_panel)
@@ -692,6 +908,9 @@ class ExtractView(QWidget):
         # Target リスト
         self.target_list = TargetPageList()
         self.target_list.setObjectName("extract_target_list")
+        self.target_list.verticalScrollBar().valueChanged.connect(
+            lambda value: self.target_viewport_changed.emit(),
+        )
         target_layout.addWidget(self.target_list, stretch=1)
 
         # 出力グループ
@@ -814,26 +1033,51 @@ class ExtractView(QWidget):
         # Presenter に _collect_selected_refs() を呼んでもらう設計。
         pass  # Presenter が set_presenter() で接続する
 
+    def eventFilter(self, watched, event) -> bool:
+        if watched in {
+            self._source_scroll,
+            self._source_scroll.viewport(),
+            self._source_content,
+        } and event.type() in {
+            QEvent.Type.DragEnter,
+            QEvent.Type.DragMove,
+            QEvent.Type.Drop,
+        }:
+            return self._handle_source_drop_event(event)
+        return super().eventFilter(watched, event)
+
     # ── 外部ファイル DnD ──
 
-    def dragEnterEvent(self, event) -> None:
-        if event.mimeData().hasUrls():
+    def _handle_source_drop_event(self, event) -> bool:
+        if not event.mimeData().hasUrls():
+            event.ignore()
+            return False
+
+        if event.type() in {QEvent.Type.DragEnter, QEvent.Type.DragMove}:
             event.acceptProposedAction()
+            return True
+
+        paths = [
+            url.toLocalFile()
+            for url in event.mimeData().urls()
+            if url.isLocalFile()
+        ]
+        if paths:
+            self.files_dropped.emit(paths)
+            event.acceptProposedAction()
+            return True
+
+        event.ignore()
+        return False
+
+    def dragEnterEvent(self, event) -> None:
+        self._handle_source_drop_event(event)
 
     def dragMoveEvent(self, event) -> None:
-        if event.mimeData().hasUrls():
-            event.acceptProposedAction()
+        self._handle_source_drop_event(event)
 
     def dropEvent(self, event) -> None:
-        if event.mimeData().hasUrls():
-            paths = [
-                url.toLocalFile()
-                for url in event.mimeData().urls()
-                if url.isLocalFile()
-            ]
-            if paths:
-                self.files_dropped.emit(paths)
-                event.acceptProposedAction()
+        self._handle_source_drop_event(event)
 
     # ── Presenter 接続 ──
 
@@ -845,6 +1089,12 @@ class ExtractView(QWidget):
 
     def update_ui(self, state: ExtractUiState) -> None:
         """受け取った状態スナップショットで画面全体を更新する。"""
+        self._apply_common_ui_state(state)
+        self.update_source_ui(state.source_sections, state.source_zoom_percent)
+        self.update_target_ui(state.target_items, state.target_zoom_percent)
+
+    def _apply_common_ui_state(self, state: ExtractUiState) -> None:
+        """Source/Target 共通の操作可能状態だけを更新する。"""
         # ボタン有効/無効
         self.btn_back_home.setEnabled(state.can_back_home)
         self.btn_add_pdf.setEnabled(state.can_add_pdf)
@@ -865,6 +1115,8 @@ class ExtractView(QWidget):
         self.txt_output_path.setText(state.output_path_text)
         self.lbl_progress.setText(state.progress_text)
 
+        self._source_drag_enabled = not state.is_running
+
         # DnD 無効化（実行中）
         self.target_list.setDragEnabled(not state.is_running)
         self.target_list.setAcceptDrops(not state.is_running)
@@ -874,63 +1126,140 @@ class ExtractView(QWidget):
             else QAbstractItemView.DragDropMode.InternalMove,
         )
 
-        # Source セクション再構築
-        self._rebuild_source_sections(state)
+    def update_source_ui(self, source_sections: list[SourceSectionItem], zoom_percent: int) -> None:
+        """Source セクション更新責務を独立させる。"""
+        self._update_source_sections(source_sections, zoom_percent)
 
-        # Target リスト再構築
-        self._rebuild_target_list(state)
+    def update_target_ui(self, target_items: list[TargetItem], zoom_percent: int) -> None:
+        """Target リスト更新責務を独立させる。"""
+        self._update_target_list(target_items, zoom_percent)
 
-    def _rebuild_source_sections(self, state: ExtractUiState) -> None:
-        """Source セクション群を再構築する。"""
-        # 既存セクション除去
-        for sw in self._source_section_widgets:
-            sw.setParent(None)
-            sw.deleteLater()
-        self._source_section_widgets.clear()
+    def _update_source_sections(
+        self,
+        source_sections: list[SourceSectionItem],
+        zoom_percent: int,
+    ) -> None:
+        """Source セクション群を既存 widget 再利用で更新する。"""
+        desired_doc_id_order = [section.doc_id for section in source_sections]
+        desired_doc_ids = {section.doc_id for section in source_sections}
+        removed_doc_ids = [doc_id for doc_id in self._source_section_widget_map if doc_id not in desired_doc_ids]
+        for doc_id in removed_doc_ids:
+            widget = self._source_section_widget_map.pop(doc_id)
+            widget.setParent(None)
+            widget.deleteLater()
 
-        # stretch を除去してから再構築
+        ordered_widgets: list[SourceSectionWidget] = []
+        for section in source_sections:
+            widget = self._source_section_widget_map.get(section.doc_id)
+            if widget is None:
+                widget = SourceSectionWidget(section, zoom_percent)
+                widget.page_clicked.connect(self.source_page_clicked.emit)
+                widget.page_double_clicked.connect(self.source_page_double_clicked.emit)
+                self._source_section_widget_map[section.doc_id] = widget
+            else:
+                widget.update_section(section, zoom_percent)
+            widget.set_drag_context(self._build_source_drag_pages, self._can_drag_source_pages)
+            ordered_widgets.append(widget)
+
+        self._source_section_widgets = ordered_widgets
+        if self._source_layout_doc_ids != desired_doc_id_order:
+            self._rebuild_source_layout(ordered_widgets)
+            self._source_layout_doc_ids = desired_doc_id_order
+
+    def _update_target_list(self, target_items: list[TargetItem], zoom_percent: int) -> None:
+        """Target リストを既存 item / row 再利用で更新する。"""
+        self.target_list.blockSignals(True)
+        self.target_list.setUpdatesEnabled(False)
+        had_focus = self.target_list.hasFocus()
+        current_item = self.target_list.currentItem()
+        current_entry_id = (
+            current_item.data(Qt.ItemDataRole.UserRole)
+            if current_item is not None else None
+        )
+        scroll_value = self.target_list.verticalScrollBar().value()
+
+        desired_ids = {target_item.entry_id for target_item in target_items}
+        removed_ids = [entry_id for entry_id in self._target_list_items if entry_id not in desired_ids]
+        for entry_id in removed_ids:
+            item = self._target_list_items.pop(entry_id)
+            row = self._target_row_widgets.pop(entry_id)
+            list_row = self.target_list.row(item)
+            if list_row >= 0:
+                self.target_list.takeItem(list_row)
+            row.setParent(None)
+            row.deleteLater()
+
+        selected_ids = {target_item.entry_id for target_item in target_items if target_item.is_selected}
+        for target_item in target_items:
+            item = self._target_list_items.get(target_item.entry_id)
+            row = self._target_row_widgets.get(target_item.entry_id)
+            if item is None or row is None:
+                item = QListWidgetItem()
+                item.setData(Qt.ItemDataRole.UserRole, target_item.entry_id)
+                row = TargetRow(target_item, zoom_percent)
+                self._target_list_items[target_item.entry_id] = item
+                self._target_row_widgets[target_item.entry_id] = row
+            else:
+                row.update_item(target_item, zoom_percent)
+            item.setSizeHint(row.sizeHint())
+
+        self._sync_target_list_order(target_items)
+        for target_item in target_items:
+            item = self._target_list_items[target_item.entry_id]
+            item.setSelected(target_item.entry_id in selected_ids)
+            if current_entry_id == target_item.entry_id:
+                self.target_list.setCurrentItem(item)
+
+        self.target_list.verticalScrollBar().setValue(scroll_value)
+        if had_focus:
+            self.target_list.setFocus()
+        self.target_list.setUpdatesEnabled(True)
+        self.target_list.blockSignals(False)
+
+    def update_source_page_thumbnail(self, doc_id: str, page_index: int, png_bytes: bytes | None, status: str) -> bool:
+        section_widget = self._source_section_widget_map.get(doc_id)
+        if section_widget is None:
+            return False
+        return section_widget.update_page_thumbnail(page_index, png_bytes, status)
+
+    def update_target_entry_thumbnail(self, entry_id: str, png_bytes: bytes | None, status: str) -> bool:
+        row = self._target_row_widgets.get(entry_id)
+        if row is None:
+            return False
+        row.update_thumbnail(png_bytes, status)
+        return True
+
+    def _rebuild_source_layout(self, ordered_widgets: list[SourceSectionWidget]) -> None:
+        self._source_content.setUpdatesEnabled(False)
         while self._source_content_layout.count():
-            item = self._source_content_layout.takeAt(0)
-            w = item.widget()
-            if w and w is not self._source_empty_label:
-                w.setParent(None)
-                w.deleteLater()
+            self._source_content_layout.takeAt(0)
 
-        if not state.source_sections:
+        if not ordered_widgets:
             self._source_empty_label.setVisible(True)
             self._source_content_layout.addWidget(self._source_empty_label)
             self._source_content_layout.addStretch()
+            self._source_content.setUpdatesEnabled(True)
             return
 
         self._source_empty_label.setVisible(False)
-        self._source_empty_label.setParent(None)
-
-        for section in state.source_sections:
-            sw = SourceSectionWidget(section, state.source_zoom_percent)
-            sw.page_clicked.connect(self.source_page_clicked.emit)
-            sw.page_double_clicked.connect(self.source_page_double_clicked.emit)
-            self._source_content_layout.addWidget(sw)
-            self._source_section_widgets.append(sw)
-
+        for widget in ordered_widgets:
+            self._source_content_layout.addWidget(widget)
         self._source_content_layout.addStretch()
+        self._source_content.setUpdatesEnabled(True)
 
-    def _rebuild_target_list(self, state: ExtractUiState) -> None:
-        """Target リストを再構築する。"""
-        self.target_list.blockSignals(True)
-        self.target_list.clear()
-
-        selected_ids = {t.entry_id for t in state.target_items if t.is_selected}
-        for tgt in state.target_items:
-            item = QListWidgetItem()
-            item.setData(Qt.ItemDataRole.UserRole, tgt.entry_id)
-            row = TargetRow(tgt, state.target_zoom_percent)
-            item.setSizeHint(row.sizeHint())
-            self.target_list.addItem(item)
-            self.target_list.setItemWidget(item, row)
-            if tgt.entry_id in selected_ids:
-                item.setSelected(True)
-
-        self.target_list.blockSignals(False)
+    def _sync_target_list_order(self, target_items: list[TargetItem]) -> None:
+        for desired_row, target_item in enumerate(target_items):
+            item = self._target_list_items[target_item.entry_id]
+            row = self._target_row_widgets[target_item.entry_id]
+            current_row = self.target_list.row(item)
+            if current_row == -1:
+                self.target_list.insertItem(desired_row, item)
+                self.target_list.setItemWidget(item, row)
+                continue
+            if current_row != desired_row:
+                moved_item = self.target_list.takeItem(current_row)
+                self.target_list.insertItem(desired_row, moved_item)
+                self.target_list.setItemWidget(moved_item, row)
 
     def get_source_section_widgets(self) -> list[SourceSectionWidget]:
         """Presenter が可視セクション判定に使う。"""
@@ -940,6 +1269,47 @@ class ExtractView(QWidget):
         """Presenter が Lazy Loading の可視判定に使う。"""
         return self._source_scroll
 
+    def get_visible_source_page_refs(self) -> list[tuple[str, int]]:
+        """Source スクロール領域で現在可視なページ参照を返す。"""
+        if not self.isVisible() or not self._source_scroll.isVisible():
+            return self._fallback_source_page_refs()
+
+        visible_rect = self._get_source_visible_rect()
+        if visible_rect is None:
+            return self._fallback_source_page_refs()
+
+        refs: list[tuple[str, int]] = []
+        for sw in self._source_section_widgets:
+            for pw in sw.page_widgets:
+                page_rect = QRect(
+                    pw.mapTo(self._source_content, QPoint(0, 0)),
+                    pw.size(),
+                )
+                if page_rect.intersects(visible_rect):
+                    refs.append((pw.doc_id, pw.page_index))
+
+        return refs or self._fallback_source_page_refs()
+
+    def get_visible_target_row_range(self) -> tuple[int, int] | None:
+        """Target リストで現在可視な行範囲を返す。"""
+        if self.target_list.count() == 0:
+            return None
+
+        viewport = self.target_list.viewport()
+        if viewport.width() <= 0 or viewport.height() <= 0:
+            return (0, min(self.target_list.count() - 1, 0))
+
+        top_index = self.target_list.indexAt(QPoint(0, 0))
+        bottom_index = self.target_list.indexAt(
+            QPoint(0, max(0, viewport.height() - 1)),
+        )
+
+        start = top_index.row() if top_index.isValid() else 0
+        end = bottom_index.row() if bottom_index.isValid() else self.target_list.count() - 1
+        if end < start:
+            end = start
+        return (start, min(end, self.target_list.count() - 1))
+
     def collect_selected_source_refs(self) -> list[tuple[str, int]]:
         """全セクションから選択されたページの (doc_id, page_index) を返す。"""
         refs: list[tuple[str, int]] = []
@@ -947,4 +1317,37 @@ class ExtractView(QWidget):
             for pw in sw.page_widgets:
                 if pw.is_selected:
                     refs.append((pw.doc_id, pw.page_index))
+        return refs
+
+    def _build_source_drag_pages(self, doc_id: str, page_index: int) -> list[dict[str, object]]:
+        refs = self.collect_selected_source_refs()
+        if (doc_id, page_index) not in refs:
+            refs = [(doc_id, page_index)]
+        return [
+            {"doc_id": selected_doc_id, "page_index": selected_page_index}
+            for selected_doc_id, selected_page_index in refs
+        ]
+
+    def _can_drag_source_pages(self) -> bool:
+        return self._source_drag_enabled
+
+    def _get_source_visible_rect(self) -> QRect | None:
+        """Source viewport の可視領域を source content 座標で返す。"""
+        viewport = self._source_scroll.viewport()
+        if viewport.width() <= 0 or viewport.height() <= 0:
+            return None
+
+        top_left = self._source_content.mapFromGlobal(
+            viewport.mapToGlobal(viewport.rect().topLeft()),
+        )
+        bottom_right = self._source_content.mapFromGlobal(
+            viewport.mapToGlobal(viewport.rect().bottomRight()),
+        )
+        return QRect(top_left, bottom_right).normalized()
+
+    def _fallback_source_page_refs(self) -> list[tuple[str, int]]:
+        """レイアウト未確定時の初回要求向けに先頭ページを返す。"""
+        refs: list[tuple[str, int]] = []
+        for sw in self._source_section_widgets[:1]:
+            refs.extend((pw.doc_id, pw.page_index) for pw in sw.page_widgets[:1])
         return refs
