@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<html xmlns="http://www.w3.org/1999/xhtml">
 <head>
   <meta charset="utf-8" />
   <meta name="generator" content="pandoc" />
@@ -9,7 +9,6 @@
     /* Default styles provided by pandoc.
     ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
     */
-    code{white-space: pre-wrap;}
     span.smallcaps{font-variant: small-caps;}
     div.columns{display: flex; gap: min(4vw, 1.5em);}
     div.column{flex: auto; overflow-x: auto;}
@@ -226,6 +225,7 @@
 <li>Presenter: <code>presenter/compress_presenter.py</code></li>
 <li>Model: <code>model/compress/compression_session.py</code>,
 <code>model/compress/compression_processor.py</code>,
+<code>model/compress/native_compressor.py</code>,
 <code>model/compress/settings.py</code></li>
 <li>View: <code>view/compress/*</code></li>
 </ul>
@@ -235,6 +235,9 @@
 <li>圧縮モードは
 <code>lossy</code>、<code>lossless</code>、<code>both</code></li>
 <li>既定値は <code>model/compress/settings.py</code> に集約される</li>
+<li><code>model/compress/native_compressor.py</code> の非可逆圧縮は、PDF
+画像の soft mask を復元し、透過付き画像を JPEG へ潰さず PNG
+経路で再圧縮する</li>
 <li>実行結果は成功、失敗、スキップを集計して完了ダイアログに出す</li>
 </ul>
 <h3 id="pdf-jpeg">5.5 PDF → JPEG</h3>

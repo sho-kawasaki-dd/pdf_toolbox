@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<html xmlns="http://www.w3.org/1999/xhtml">
 <head>
   <meta charset="utf-8" />
   <meta name="generator" content="pandoc" />
@@ -9,7 +9,6 @@
     /* Default styles provided by pandoc.
     ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
     */
-    code{white-space: pre-wrap;}
     span.smallcaps{font-variant: small-caps;}
     div.columns{display: flex; gap: min(4vw, 1.5em);}
     div.column{flex: auto; overflow-x: auto;}
@@ -297,6 +296,8 @@ class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="
 <li>入力として PDF、ZIP、フォルダを受け付けます</li>
 <li>PDF / ZIP / フォルダ以外は追加されません</li>
 <li>ZIP の再帰探索深度は制限されています</li>
+<li>非可逆圧縮では、PDF に埋め込まれた透過付き PNG や soft mask
+付き画像は、透過を保持したまま PNG として再圧縮します</li>
 <li>完了時に成功件数、失敗件数、スキップ件数、圧縮率が表示されます</li>
 </ul>
 <h3 id="実行中の注意-3">6.4 実行中の注意</h3>

@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 from pathlib import Path
 
+import fitz
 from PIL import Image
 
 from model.compress import native_compressor
@@ -26,6 +27,17 @@ def _make_rgb_image() -> Image.Image:
         for y in range(256):
             pixels[x, y] = ((x * 3) % 255, (y * 5) % 255, ((x + y) * 7) % 255)
     return image
+
+
+def _load_page_image(pdf_path: Path, page_index: int) -> tuple[dict[str, object], Image.Image, bool]:
+    with fitz.open(str(pdf_path)) as document:
+        image_infos = document[page_index].get_image_info(xrefs=True)
+        assert image_infos
+        xref = image_infos[0]["xref"]
+        extracted = document.extract_image(xref)
+        image, has_transparency = native_compressor._load_pdf_raster_image_with_soft_mask(document, extracted)
+        image.load()
+    return extracted, image, has_transparency
 
 
 def test_compress_png_bytes_prefers_pngquant(monkeypatch) -> None:
@@ -90,6 +102,17 @@ def test_jpeg_quality_changes_output_size() -> None:
 
 def test_png_quality_maps_to_more_colors() -> None:
     assert native_compressor._quality_to_palette_colors(20) < native_compressor._quality_to_palette_colors(80)
+
+
+def test_load_pdf_raster_image_with_soft_mask_reconstructs_alpha(image_pdf: Path) -> None:
+    extracted, image, has_transparency = _load_page_image(image_pdf, 1)
+
+    assert extracted.get("smask", 0)
+    assert has_transparency is True
+    assert "A" in image.getbands()
+    alpha_min, alpha_max = image.getchannel("A").getextrema()
+    assert alpha_min < 255
+    assert alpha_max == 255
 
 
 def test_compress_pdf_lossless_applies_options(sample_pdf: Path, tmp_path: Path, monkeypatch) -> None:
@@ -168,6 +191,36 @@ def test_compress_pdf_lossy_creates_output(image_pdf: Path, tmp_path: Path) -> N
     assert metrics.input_bytes == image_pdf.stat().st_size
     assert metrics.lossy_output_bytes == output_path.stat().st_size
     assert metrics.final_output_bytes == output_path.stat().st_size
+
+
+def test_compress_pdf_lossy_passes_transparency_to_png_encoder(
+    image_pdf: Path,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    observed_transparency: list[bool] = []
+    original_compress_png_bytes = native_compressor.compress_png_bytes
+
+    def recording_compress_png_bytes(png_bytes: bytes, quality: int, speed: int) -> bytes:
+        with Image.open(io.BytesIO(png_bytes)) as image:
+            image.load()
+            observed_transparency.append(native_compressor._pdf_image_has_transparency(image))
+        return original_compress_png_bytes(png_bytes, quality, speed)
+
+    monkeypatch.setattr(native_compressor, "compress_png_bytes", recording_compress_png_bytes)
+
+    output_path = tmp_path / "transparent-compressed.pdf"
+    ok, _message, _metrics = native_compressor.compress_pdf_lossy(
+        image_pdf,
+        output_path,
+        target_dpi=96,
+        jpeg_quality=40,
+        png_quality=40,
+    )
+
+    assert ok is True
+    assert output_path.exists()
+    assert any(observed_transparency)
 
 
 def test_validate_pdf_helpers(sample_pdf: Path, broken_pdf: Path) -> None:

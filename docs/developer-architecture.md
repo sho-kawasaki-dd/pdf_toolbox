@@ -189,7 +189,7 @@ View は表示とイベント通知だけを担います。
 ### 5.4 PDF 圧縮
 
 - Presenter: `presenter/compress_presenter.py`
-- Model: `model/compress/compression_session.py`, `model/compress/compression_processor.py`, `model/compress/settings.py`
+- Model: `model/compress/compression_session.py`, `model/compress/compression_processor.py`, `model/compress/native_compressor.py`, `model/compress/settings.py`
 - View: `view/compress/*`
 
 主なポイント:
@@ -197,6 +197,7 @@ View は表示とイベント通知だけを担います。
 - 入力は PDF、ZIP、フォルダ
 - 圧縮モードは `lossy`、`lossless`、`both`
 - 既定値は `model/compress/settings.py` に集約される
+- `model/compress/native_compressor.py` の非可逆圧縮は、PDF 画像の soft mask を復元し、透過付き画像を JPEG へ潰さず PNG 経路で再圧縮する
 - 実行結果は成功、失敗、スキップを集計して完了ダイアログに出す
 
 ### 5.5 PDF → JPEG

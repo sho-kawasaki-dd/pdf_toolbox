@@ -27,6 +27,10 @@ from model.compress.settings import (
 )
 
 
+PDF_PNG_LIKE_EXTENSIONS = frozenset({"png", "bmp", "gif", "tif", "tiff"})
+PDF_UNSUPPORTED_RASTER_EXTENSIONS = frozenset({"jbig2", "jpx"})
+
+
 @dataclass(frozen=True, slots=True)
 class CompressionMetrics:
     """圧縮前後と中間段階のファイルサイズを保持する。"""
@@ -153,6 +157,81 @@ def _quality_to_palette_colors(quality: int) -> int:
     return max(16, min(256, round(16 + (clamped / 100.0) * 240)))
 
 
+def _get_pillow_resample_filter() -> Any:
+    """Pillow の互換性差分を吸収した縮小フィルタを返す。"""
+    if hasattr(Image, "Resampling"):
+        return Image.Resampling.LANCZOS
+    return getattr(cast(Any, Image), "LANCZOS")
+
+
+def _open_pdf_raster_image(image_bytes: bytes) -> Image.Image:
+    """PDF から抽出したラスター画像を読み込んだ Pillow 画像として返す。"""
+    image = Image.open(io.BytesIO(image_bytes))
+    image.load()
+    return image
+
+
+def _pdf_image_has_transparency(image: Image.Image) -> bool:
+    """Pillow 画像に有効な透過が含まれているかを返す。"""
+    if "A" in image.getbands():
+        try:
+            alpha_min, _alpha_max = image.getchannel("A").getextrema()
+            return alpha_min < 255
+        except Exception:
+            return True
+
+    transparency = image.info.get("transparency")
+    if transparency is None:
+        return False
+    if isinstance(transparency, bytes):
+        return any(value < 255 for value in transparency)
+    return True
+
+
+def _normalize_pdf_png_source_image(image: Image.Image) -> Image.Image:
+    """PNG 量子化前に PDF 抽出画像の mode を安定した形へ寄せる。"""
+    has_alpha = "A" in image.getbands() or "transparency" in image.info
+
+    if image.mode in ("RGB", "RGBA", "L"):
+        return image
+    if image.mode == "LA":
+        return image.convert("RGBA")
+    if image.mode == "P":
+        return image.convert("RGBA" if has_alpha else "RGB")
+    return image.convert("RGBA" if has_alpha else "RGB")
+
+
+def _normalize_pdf_soft_mask(mask_image: Image.Image, size: tuple[int, int]) -> Image.Image:
+    """soft mask を base image と同じサイズの L 画像へ揃える。"""
+    if mask_image.size != size:
+        mask_image = mask_image.resize(size, _get_pillow_resample_filter())
+    if mask_image.mode != "L":
+        mask_image = mask_image.convert("L")
+    return mask_image
+
+
+def _load_pdf_raster_image_with_soft_mask(document: Any, base_image: dict[str, Any]) -> tuple[Image.Image, bool]:
+    """PDF 画像本体と optional soft mask を 1 枚の Pillow 画像へ再構成する。"""
+    image = _open_pdf_raster_image(cast(bytes, base_image["image"]))
+    smask_xref = base_image.get("smask", 0)
+    if not isinstance(smask_xref, int) or smask_xref <= 0:
+        return image, _pdf_image_has_transparency(image)
+
+    soft_mask = document.extract_image(smask_xref)
+    if not soft_mask:
+        return image, _pdf_image_has_transparency(image)
+
+    try:
+        mask_image = _open_pdf_raster_image(cast(bytes, soft_mask["image"]))
+        alpha_mask = _normalize_pdf_soft_mask(mask_image, image.size)
+        if image.mode != "RGBA":
+            image = image.convert("RGBA")
+        image.putalpha(alpha_mask)
+        return image, _pdf_image_has_transparency(image)
+    except Exception:
+        return image, _pdf_image_has_transparency(image)
+
+
 def _save_as_jpeg(image: Image.Image, quality: int) -> bytes:
     """必要ならアルファを潰したうえで JPEG として保存する。
 
@@ -264,12 +343,7 @@ def _resize_image_if_needed(image: Image.Image, effective_dpi: float, target_dpi
     new_width = max(1, int(image.width * scale))
     new_height = max(1, int(image.height * scale))
 
-    if hasattr(Image, "Resampling"):
-        resample_filter = Image.Resampling.LANCZOS
-    else:
-        resample_filter = getattr(cast(Any, Image), "LANCZOS")
-
-    return image.resize((new_width, new_height), resample_filter), True, (new_width, new_height)
+    return image.resize((new_width, new_height), _get_pillow_resample_filter()), True, (new_width, new_height)
 
 
 def _encode_replacement_image(
@@ -278,16 +352,17 @@ def _encode_replacement_image(
     jpeg_quality: int,
     png_quality: int,
     pngquant_speed: int,
+    *,
+    preserve_as_png: bool = False,
 ) -> tuple[bytes, str]:
     """置換画像を、内容に応じて適切な圧縮経路でエンコードする。
 
     本来的に可逆寄りのラスタ形式は PNG 系統の経路へ残す。そうすることで、
     ベタ塗りや透過を不要に JPEG 化してアーティファクトを増やすのを避ける。
     """
-    if image_ext in {"png", "bmp", "gif", "tif", "tiff"}:
+    if preserve_as_png or image_ext in PDF_PNG_LIKE_EXTENSIONS:
         buffer = io.BytesIO()
-        if image.mode not in {"RGB", "RGBA", "L", "LA", "P"}:
-            image = image.convert("RGBA" if "A" in image.mode else "RGB")
+        image = _normalize_pdf_png_source_image(image)
         image.save(buffer, format="PNG")
         return compress_png_bytes(buffer.getvalue(), png_quality, pngquant_speed), "PNG"
 
@@ -344,25 +419,25 @@ def compress_pdf_lossy(
 
                     image_bytes = extracted["image"]
                     image_ext = str(extracted.get("ext", "")).lower()
-                    if image_ext in {"jbig2", "jpx"}:
+                    if image_ext in PDF_UNSUPPORTED_RASTER_EXTENSIONS:
                         # これらは特殊化された画像形式であり、Pillow 経由で round-trip すると
                         # 破損や肥大化のリスクが高いため触らない。
                         continue
 
                     try:
-                        with Image.open(io.BytesIO(image_bytes)) as pil_image:
-                            pil_image.load()
-                            effective_dpi_x = pil_image.width / (rect.width / 72.0)
-                            effective_dpi_y = pil_image.height / (rect.height / 72.0)
-                            effective_dpi = max(effective_dpi_x, effective_dpi_y)
-                            working_image, _, _ = _resize_image_if_needed(pil_image, effective_dpi, target_dpi)
-                            replacement_bytes, _ = _encode_replacement_image(
-                                working_image,
-                                image_ext,
-                                jpeg_quality,
-                                png_quality,
-                                pngquant_speed,
-                            )
+                        pil_image, has_transparency = _load_pdf_raster_image_with_soft_mask(document, extracted)
+                        effective_dpi_x = pil_image.width / (rect.width / 72.0)
+                        effective_dpi_y = pil_image.height / (rect.height / 72.0)
+                        effective_dpi = max(effective_dpi_x, effective_dpi_y)
+                        working_image, _, _ = _resize_image_if_needed(pil_image, effective_dpi, target_dpi)
+                        replacement_bytes, _ = _encode_replacement_image(
+                            working_image,
+                            image_ext,
+                            jpeg_quality,
+                            png_quality,
+                            pngquant_speed,
+                            preserve_as_png=image_ext in PDF_PNG_LIKE_EXTENSIONS or has_transparency,
+                        )
                     except Exception:
                         # 一部画像が壊れていても PDF 全体のバッチを落とさないことを優先する。
                         # MVP では資産ごとの完全性より、バッチ全体の継続性が重要である。
