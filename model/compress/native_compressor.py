@@ -24,6 +24,7 @@ from model.compress.settings import (
     PDF_LOSSY_JPEG_QUALITY_DEFAULT,
     PDF_LOSSY_PNG_QUALITY_DEFAULT,
     PNGQUANT_DEFAULT_SPEED,
+    PNGQUANT_TIMEOUT_SECONDS,
 )
 
 
@@ -259,8 +260,13 @@ def _compress_png_with_pngquant(png_bytes: bytes, quality: int, speed: int) -> b
     pngquant は CLI ツールなので、Windows でも素直に動かせる移植性の高い接続方法は
     一時ファイルを介した round-trip になる。シェル依存の処理も持ち込まずに済む。
     """
+    pngquant_executable = shutil.which("pngquant")
+    if pngquant_executable is None:
+        raise RuntimeError("pngquant not found")
+
     quality_min, quality_max = _quality_to_pngquant_range(quality)
     clamped_speed = max(1, min(11, speed))
+    creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
     with tempfile.TemporaryDirectory() as temp_dir:
         input_path = Path(temp_dir) / "input.png"
@@ -269,7 +275,7 @@ def _compress_png_with_pngquant(png_bytes: bytes, quality: int, speed: int) -> b
 
         completed = subprocess.run(
             [
-                "pngquant",
+                pngquant_executable,
                 "--force",
                 "--output",
                 str(output_path),
@@ -278,11 +284,14 @@ def _compress_png_with_pngquant(png_bytes: bytes, quality: int, speed: int) -> b
                 str(input_path),
             ],
             check=False,
+            cwd=temp_dir,
+            timeout=PNGQUANT_TIMEOUT_SECONDS,
+            creationflags=creation_flags,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
 
-        if completed.returncode != 0 or not output_path.exists():
+        if completed.returncode != 0 or not output_path.exists() or output_path.stat().st_size <= 0:
             raise RuntimeError(completed.stderr.decode("utf-8", errors="ignore") or "pngquant failed")
 
         return output_path.read_bytes()

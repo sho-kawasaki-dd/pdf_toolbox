@@ -40,3 +40,7 @@ ZIP_SCAN_MAX_DEPTH = 5
 # デスクトップツールではベンチマーク速度より出力サイズの妥当性が重要なため、
 # 既定値としてこのバランスを採用している。
 PNGQUANT_DEFAULT_SPEED = 3
+
+# 外部 CLI がハングした場合でもバッチ全体を巻き添えにしないため、
+# pngquant 実行には十分に保守的なタイムアウトを設ける。
+PNGQUANT_TIMEOUT_SECONDS = 300

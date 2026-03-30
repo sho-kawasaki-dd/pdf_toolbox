@@ -238,6 +238,14 @@
 <li><code>model/compress/native_compressor.py</code> の非可逆圧縮は、PDF
 画像の soft mask を復元し、透過付き画像を JPEG へ潰さず PNG
 経路で再圧縮する</li>
+<li>PNG 量子化で <code>pngquant</code>
+を使うときは、<code>shutil.which("pngquant")</code>
+で解決した実行ファイルパスを shell
+なしで起動し、専用一時ディレクトリ、タイムアウト、Windows の
+<code>CREATE_NO_WINDOW</code> を付けて実行する</li>
+<li><code>pngquant</code>
+が利用できない、失敗する、空出力を返す場合は画像単位で Pillow
+フォールバックへ降格し、バッチ全体の継続性を優先する</li>
 <li>実行結果は成功、失敗、スキップを集計して完了ダイアログに出す</li>
 </ul>
 <h3 id="pdf-jpeg">5.5 PDF → JPEG</h3>

@@ -198,6 +198,8 @@ View は表示とイベント通知だけを担います。
 - 圧縮モードは `lossy`、`lossless`、`both`
 - 既定値は `model/compress/settings.py` に集約される
 - `model/compress/native_compressor.py` の非可逆圧縮は、PDF 画像の soft mask を復元し、透過付き画像を JPEG へ潰さず PNG 経路で再圧縮する
+- PNG 量子化で `pngquant` を使うときは、`shutil.which("pngquant")` で解決した実行ファイルパスを shell なしで起動し、専用一時ディレクトリ、タイムアウト、Windows の `CREATE_NO_WINDOW` を付けて実行する
+- `pngquant` が利用できない、失敗する、空出力を返す場合は画像単位で Pillow フォールバックへ降格し、バッチ全体の継続性を優先する
 - 実行結果は成功、失敗、スキップを集計して完了ダイアログに出す
 
 ### 5.5 PDF → JPEG

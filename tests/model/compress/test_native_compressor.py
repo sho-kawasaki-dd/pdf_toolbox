@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import io
+import subprocess
 from pathlib import Path
 
 import fitz
+import pytest
 from PIL import Image
 
 from model.compress import native_compressor
@@ -90,6 +92,44 @@ def test_compress_png_bytes_falls_back_when_pngquant_raises(monkeypatch) -> None
 
     assert result == b"pillow-fallback"
     assert pillow_calls == [55]
+
+
+def test_compress_png_with_pngquant_uses_resolved_path_and_safety_options(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(native_compressor.shutil, "which", lambda command: "C:/tools/pngquant.exe" if command == "pngquant" else None)
+
+    def fake_run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+
+        output_path = Path(args[args.index("--output") + 1])
+        output_path.write_bytes(b"optimized")
+        return subprocess.CompletedProcess(args=args, returncode=0, stdout=b"", stderr=b"")
+
+    monkeypatch.setattr(native_compressor.subprocess, "run", fake_run)
+
+    result = native_compressor._compress_png_with_pngquant(_make_png_bytes(), quality=74, speed=8)
+
+    assert result == b"optimized"
+    assert captured["args"][0] == "C:/tools/pngquant.exe"
+    assert captured["kwargs"]["timeout"] == native_compressor.PNGQUANT_TIMEOUT_SECONDS
+    assert Path(captured["kwargs"]["cwd"]) == Path(captured["args"][3]).parent
+    assert captured["kwargs"]["creationflags"] == getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+
+def test_compress_png_with_pngquant_rejects_empty_output(monkeypatch) -> None:
+    monkeypatch.setattr(native_compressor.shutil, "which", lambda command: "C:/tools/pngquant.exe" if command == "pngquant" else None)
+
+    def fake_run(args: list[str], **_kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        output_path = Path(args[args.index("--output") + 1])
+        output_path.write_bytes(b"")
+        return subprocess.CompletedProcess(args=args, returncode=0, stdout=b"", stderr=b"")
+
+    monkeypatch.setattr(native_compressor.subprocess, "run", fake_run)
+
+    with pytest.raises(RuntimeError, match="pngquant failed"):
+        native_compressor._compress_png_with_pngquant(_make_png_bytes(), quality=65, speed=3)
 
 
 def test_jpeg_quality_changes_output_size() -> None:

@@ -181,6 +181,11 @@ class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="
 <li>圧縮モードは非可逆、可逆、両方の 3 種類です</li>
 <li>非可逆圧縮では、PDF 内の透過付き PNG や soft mask
 付き画像は透過を保ったまま PNG 経路で再圧縮します</li>
+<li>PNG 量子化では、<code>pngquant</code>
+が利用可能な環境ではそれを優先し、利用できない場合や実行失敗時は Pillow
+フォールバックで処理を継続します</li>
+<li><code>pngquant</code> の呼び出しは shell
+を介さず、解決済み実行パス・専用一時ディレクトリ・タイムアウト付きで実行されます</li>
 <li>複数入力をまとめて処理し、成功・失敗・スキップ件数を集計表示します</li>
 </ul>
 <h3 id="pdf-jpeg">PDF → JPEG</h3>
