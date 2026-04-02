@@ -128,7 +128,7 @@ class MergePresenter:
         self._last_error_message = None
         self._merge_processor.start_merge(self._session.input_paths, self._session.output_path)
         self._refresh_ui()
-        self._ensure_merge_polling(delay_ms=0)
+        self._ensure_merge_polling(delay_ms=0, force_initial=True)
 
     def on_closing(self) -> None:
         """実行中ならキャンセル要求を出し、停止後に終了する。"""
@@ -213,8 +213,8 @@ class MergePresenter:
         if self._thumbnail_poll_job_id is None and self._thumbnail_loader.is_loading:
             self._thumbnail_poll_job_id = self._view.schedule(100, self._poll_thumbnail_results)
 
-    def _ensure_merge_polling(self, delay_ms: int = 50) -> None:
-        if self._merge_poll_job_id is None and self._merge_processor.is_merging:
+    def _ensure_merge_polling(self, delay_ms: int = 50, force_initial: bool = False) -> None:
+        if self._merge_poll_job_id is None and (force_initial or self._merge_processor.is_merging):
             self._merge_poll_job_id = self._view.schedule(delay_ms, self._poll_merge_results)
 
     def _poll_thumbnail_results(self) -> None:

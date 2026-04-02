@@ -36,7 +36,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="PDFToolbox_v1.0.1",
+    name="PDFToolbox_v1.0.2",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -57,5 +57,5 @@ coll = COLLECT(
     strip=False,
     upx=False,
     upx_exclude=[],
-    name="PDFToolbox_v1.0.1",
+    name="PDFToolbox_v1.0.2",
 )

@@ -148,11 +148,54 @@ class TestMergePresenter:
 
         presenter._merge_processor.start_merge.assert_called_once()
         view.schedule.assert_called_once()
+        assert view.schedule.call_args[0][0] == 0
         state = view.update_merge_ui.call_args[0][0]
         assert state.can_add_inputs is False
         assert "準備" in state.progress_text
         assert state.progress_value == 0
         assert state.can_back_home is False
+
+    def test_execute_merge_polls_even_if_worker_finishes_before_initial_schedule(self, sample_pdf: Path, tmp_path: Path) -> None:
+        view = _make_mock_view()
+        view.schedule.side_effect = lambda _ms, callback: callback() or "timer_1"
+        presenter = MergePresenter(view)
+        presenter._session.add_inputs([str(sample_pdf)])
+        presenter._session.set_output_path(str(tmp_path / "merged.pdf"))
+        results = [
+            {"type": "progress", "processed_items": 0, "total_items": 1, "processed_pages": 1, "total_pages": 1},
+            {"type": "finished", "processed_items": 1, "total_items": 1, "processed_pages": 1, "total_pages": 1, "output_path": str(tmp_path / "merged.pdf")},
+        ]
+        fake_processor = SimpleNamespace(
+            is_merging=False,
+            poll_results=MagicMock(return_value=results),
+            request_cancel=MagicMock(),
+        )
+        fake_processor.start_merge = MagicMock(side_effect=lambda *_args: setattr(fake_processor, "is_merging", False))
+        presenter._merge_processor = fake_processor
+        view.reset_mock()
+
+        presenter.execute_merge()
+
+        view.show_info.assert_called_once()
+        assert view.show_info.call_args[0][0] == "結合完了"
+        state = view.update_merge_ui.call_args[0][0]
+        assert state.progress_text == "完了: 1 / 1 ページ"
+        assert state.progress_value == 100
+        assert state.can_back_home is True
+
+    def test_ensure_merge_polling_respects_force_initial_flag(self) -> None:
+        view = _make_mock_view()
+        presenter = MergePresenter(view)
+        presenter._merge_processor = SimpleNamespace(is_merging=False)
+        view.reset_mock()
+
+        presenter._ensure_merge_polling()
+
+        view.schedule.assert_not_called()
+
+        presenter._ensure_merge_polling(force_initial=True)
+
+        view.schedule.assert_called_once()
 
     def test_poll_merge_results_updates_progress_value(self) -> None:
         view = _make_mock_view()

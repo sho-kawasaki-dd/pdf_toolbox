@@ -724,16 +724,61 @@ class TestExecution:
 
         fake_proc.start_extract.assert_called_once()
         view.schedule.assert_called_once()
+        assert view.schedule.call_args[0][0] == 100
         state = view.update_extract_ui.call_args[0][0]
         assert state.can_add_pdf is False
         assert "抽出中" in state.progress_text
         assert state.can_back_home is False
+
+    def test_execute_extract_polls_even_if_worker_finishes_before_initial_schedule(self, sample_pdf: Path, tmp_path: Path) -> None:
+        view = _make_mock_view()
+        view.schedule.side_effect = lambda _ms, callback: callback() or "timer_1"
+        p = ExtractPresenter(view)
+        p._thumbnail_loader = _stub_thumbnail_loader(is_loading=False)
+        p.handle_dropped_paths([str(sample_pdf)])
+        doc = p._session.source_documents[0]
+        p._session.add_to_target([SourcePageRef(doc_id=doc.id, page_index=0)])
+        p._session.set_output_path(str(tmp_path / "out.pdf"))
+        results = [
+            {"type": "progress", "processed": 1, "total": 1},
+            {"type": "finished", "processed": 1, "total": 1, "output_path": str(tmp_path / "out.pdf")},
+        ]
+        fake_proc = SimpleNamespace(
+            is_running=False,
+            poll_results=MagicMock(return_value=results),
+            request_cancel=MagicMock(),
+        )
+        fake_proc.start_extract = MagicMock(side_effect=lambda *_args: setattr(fake_proc, "is_running", False))
+        p._processor = fake_proc
+        view.reset_mock()
+
+        p.execute_extract()
+
+        view.show_info.assert_called_once()
+        assert view.show_info.call_args[0][0] == "抽出完了"
+        state = view.update_extract_ui.call_args[0][0]
+        assert state.progress_text == "完了: 1 / 1 ページ"
+        assert state.can_back_home is True
 
 
 # ── ポーリング結果 ────────────────────────────────────
 
 
 class TestPolling:
+
+    def test_ensure_extract_polling_respects_force_initial_flag(self) -> None:
+        view = _make_mock_view()
+        p = ExtractPresenter(view)
+        p._processor = SimpleNamespace(is_running=False)
+        view.reset_mock()
+
+        p._ensure_extract_polling()
+
+        view.schedule.assert_not_called()
+
+        p._ensure_extract_polling(force_initial=True)
+
+        view.schedule.assert_called_once()
 
     def test_poll_extract_finished(self, sample_pdf: Path, tmp_path: Path) -> None:
         view = _make_mock_view()

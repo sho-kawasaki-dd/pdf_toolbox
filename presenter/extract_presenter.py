@@ -319,7 +319,7 @@ class ExtractPresenter:
         self._last_error_message = None
         self._processor.start_extract(pages, self._session.output_path)
         self._refresh_ui()
-        self._ensure_extract_polling()
+        self._ensure_extract_polling(force_initial=True)
 
     # ── 終了制御 ─────────────────────────────────────────
 
@@ -402,8 +402,8 @@ class ExtractPresenter:
         if self._thumbnail_poll_job_id is None and self._thumbnail_loader.is_loading:
             self._thumbnail_poll_job_id = self._view.schedule(100, self._poll_thumbnail_results)
 
-    def _ensure_extract_polling(self) -> None:
-        if self._extract_poll_job_id is None and self._processor.is_running:
+    def _ensure_extract_polling(self, force_initial: bool = False) -> None:
+        if self._extract_poll_job_id is None and (force_initial or self._processor.is_running):
             self._extract_poll_job_id = self._view.schedule(100, self._poll_extract_results)
 
     def _poll_thumbnail_results(self) -> None:

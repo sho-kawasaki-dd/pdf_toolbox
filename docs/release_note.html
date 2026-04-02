@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>release_note</title>
+  <style>
+    /* Default styles provided by pandoc.
+    ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+    */
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+  </style>
+  <link rel="stylesheet" href="../github-markdown.css" />
+</head>
+<body>
+<h1 id="リリースノート">リリースノート</h1>
+<h2 id="v1.0.2">v1.0.2</h2>
+<p>リリース日: 2026-04-02</p>
+<h3 id="概要">概要</h3>
+<p>PDF 結合機能で、出力 PDF は生成されているにもかかわらず、GUI
+上では「結合準備中」のまま完了判定されず、ツールバー操作も復帰しない不具合を修正しました。</p>
+<p>あわせて、同じ構造の非同期ポーリングを持つ PDF
+抽出機能にも予防修正を適用しました。</p>
+<h3 id="修正内容">修正内容</h3>
+<ul>
+<li>PDF 結合の Presenter
+で、バックグラウンド処理開始直後に初回ポーリングを必ず 1
+回実行するよう修正しました</li>
+<li>PDF
+結合で、処理が非常に短時間で完了した場合でも、完了通知、進捗表示、ボタン状態の復帰が正しく行われるようにしました</li>
+<li>PDF 抽出にも同様の初回ポーリング保証を追加し、同型の race condition
+を予防しました</li>
+<li>PDF 結合と PDF 抽出の Presenter
+テストに、即時完了ケースの回帰テストを追加しました</li>
+</ul>
+<h3 id="影響範囲">影響範囲</h3>
+<ul>
+<li>利用者向け影響: PDF
+結合完了後に画面が準備中のまま固まることがある問題が解消されます</li>
+<li>互換性: 既存の操作手順、UI 文言、出力仕様に変更はありません</li>
+<li>保守面: 非同期処理の完了検知が安定し、短時間ジョブでも UI
+状態が取り残されにくくなります</li>
+</ul>
+<h3 id="確認済み事項">確認済み事項</h3>
+<ul>
+<li><code>tests/presenter/test_merge_presenter.py</code> を通過</li>
+<li><code>tests/presenter/test_extract_presenter.py</code> を通過</li>
+<li><code>tests/presenter/</code> 一式を通過</li>
+</ul>
+</body>
+</html>
