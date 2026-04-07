@@ -31,7 +31,7 @@ try {
         throw 'PyInstaller was not found. Activate your virtual environment or install PyInstaller first.'
     }
 
-    $distPath = Join-Path $projectRoot 'dist\PDFToolbox_v1.0.2'
+    $distPath = Join-Path $projectRoot 'dist\PDFToolbox_v1.0.3'
 
     if (Test-Path $distPath) {
         Write-Host "Build completed: $distPath"

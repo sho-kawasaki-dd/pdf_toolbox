@@ -140,6 +140,23 @@ def test_jpeg_quality_changes_output_size() -> None:
     assert len(low_quality) < len(high_quality)
 
 
+def test_convert_cmyk_to_rgb_without_icc_profile() -> None:
+    image = Image.new("CMYK", (32, 32), (10, 40, 90, 20))
+
+    converted, was_converted = native_compressor._convert_cmyk_to_rgb(image)
+
+    assert was_converted is True
+    assert converted.mode == "RGB"
+
+
+def test_normalize_pdf_png_source_image_converts_cmyk_to_rgb() -> None:
+    image = Image.new("CMYK", (16, 16), (50, 30, 10, 5))
+
+    normalized = native_compressor._normalize_pdf_png_source_image(image)
+
+    assert normalized.mode == "RGB"
+
+
 def test_png_quality_maps_to_more_colors() -> None:
     assert native_compressor._quality_to_palette_colors(20) < native_compressor._quality_to_palette_colors(80)
 
@@ -153,6 +170,14 @@ def test_load_pdf_raster_image_with_soft_mask_reconstructs_alpha(image_pdf: Path
     alpha_min, alpha_max = image.getchannel("A").getextrema()
     assert alpha_min < 255
     assert alpha_max == 255
+
+
+def test_load_pdf_raster_image_with_soft_mask_converts_cmyk_image_to_rgb(cmyk_image_pdf: Path) -> None:
+    extracted, image, has_transparency = _load_page_image(cmyk_image_pdf, 0)
+
+    assert extracted.get("ext") == "jpeg"
+    assert image.mode == "RGB"
+    assert has_transparency is False
 
 
 def test_compress_pdf_lossless_applies_options(sample_pdf: Path, tmp_path: Path, monkeypatch) -> None:
@@ -229,6 +254,25 @@ def test_compress_pdf_lossy_creates_output(image_pdf: Path, tmp_path: Path) -> N
     assert "png_quality=40" in message
     assert metrics is not None
     assert metrics.input_bytes == image_pdf.stat().st_size
+    assert metrics.lossy_output_bytes == output_path.stat().st_size
+    assert metrics.final_output_bytes == output_path.stat().st_size
+
+
+def test_compress_pdf_lossy_creates_output_for_cmyk_jpeg_pdf(cmyk_image_pdf: Path, tmp_path: Path) -> None:
+    output_path = tmp_path / "compressed-cmyk.pdf"
+    ok, message, metrics = native_compressor.compress_pdf_lossy(
+        cmyk_image_pdf,
+        output_path,
+        target_dpi=96,
+        jpeg_quality=40,
+        png_quality=40,
+    )
+
+    assert ok is True
+    assert output_path.exists()
+    assert "jpeg_quality=40" in message
+    assert metrics is not None
+    assert metrics.input_bytes == cmyk_image_pdf.stat().st_size
     assert metrics.lossy_output_bytes == output_path.stat().st_size
     assert metrics.final_output_bytes == output_path.stat().st_size
 

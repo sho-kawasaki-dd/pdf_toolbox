@@ -96,6 +96,16 @@
 <p>PDF を扱う日常作業をまとめて支援する Windows
 向けデスクトップアプリケーションです。 <code>main.py</code>
 から起動し、MVP（Model / View / Presenter）構成で実装されています。</p>
+<p>現在のバージョンは 1.0.3 です。</p>
+<h2 id="の更新内容">1.0.3 の更新内容</h2>
+<ul>
+<li>PDF 圧縮で、PDF 内の CMYK JPEG 画像を RGB
+へ正規化してから再圧縮するよう改善しました</li>
+<li>埋め込み ICC プロファイルを持つ CMYK
+画像では、その色情報を優先して変換します</li>
+<li>CMYK 画像を含む PDF
+圧縮の回帰テストを追加し、非可逆圧縮の安定性を強化しました</li>
+</ul>
 <h2 id="このアプリでできること">このアプリでできること</h2>
 <ul>
 <li>PDF 分割: 1 つの PDF をセクション単位で複数ファイルへ分割</li>
@@ -184,6 +194,8 @@ class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="
 <li>圧縮モードは非可逆、可逆、両方の 3 種類です</li>
 <li>非可逆圧縮では、PDF 内の透過付き PNG や soft mask
 付き画像は透過を保ったまま PNG 経路で再圧縮します</li>
+<li>非可逆圧縮では、CMYK JPEG 画像も RGB
+系へ正規化してから再圧縮し、暗転や保存失敗を避けます</li>
 <li>PNG 量子化では、<code>pngquant</code>
 が利用可能な環境ではそれを優先し、利用できない場合や実行失敗時は Pillow
 フォールバックで処理を継続します</li>
@@ -254,6 +266,11 @@ class="sourceCode powershell"><code class="sourceCode powershell"><span id="cb4-
 <li>JPEG の背景が白になる
 <ul>
 <li>透明要素を含むページを白背景に合成して保存する仕様です</li>
+</ul></li>
+<li>PDF 圧縮後に画像の色が崩れるのが不安
+<ul>
+<li>1.0.3 では CMYK JPEG を RGB へ正規化してから圧縮するため、CMYK
+画像を含む PDF でも従来より安定して処理できます</li>
 </ul></li>
 </ul>
 <h2 id="ドキュメント更新ルール">ドキュメント更新ルール</h2>

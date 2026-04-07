@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
-from PIL import Image
+from PIL import Image, ImageCms
 
 from model.compress.settings import (
     PDF_ALLOWED_MODES,
@@ -172,11 +172,41 @@ def _open_pdf_raster_image(image_bytes: bytes) -> Image.Image:
     return image
 
 
+def _convert_cmyk_to_rgb(image: Image.Image) -> tuple[Image.Image, bool]:
+    """CMYK 画像を ICC プロファイル優先で RGB へ変換する。"""
+    if image.mode != "CMYK":
+        return image, False
+
+    icc_profile = image.info.get("icc_profile")
+    if isinstance(icc_profile, bytes) and icc_profile:
+        try:
+            src_profile = ImageCms.ImageCmsProfile(io.BytesIO(icc_profile))
+            dst_profile = ImageCms.createProfile("sRGB")
+            converted = cast(
+                Image.Image,
+                ImageCms.profileToProfile(
+                    image,
+                    src_profile,
+                    dst_profile,
+                    outputMode="RGB",
+                    inPlace=False,
+                ),
+            )
+            converted.load()
+            return converted, True
+        except Exception:
+            pass
+
+    converted = image.convert("RGB")
+    converted.load()
+    return converted, True
+
+
 def _pdf_image_has_transparency(image: Image.Image) -> bool:
     """Pillow 画像に有効な透過が含まれているかを返す。"""
     if "A" in image.getbands():
         try:
-            alpha_min, _alpha_max = image.getchannel("A").getextrema()
+            alpha_min, _alpha_max = cast(tuple[int, int], image.getchannel("A").getextrema())
             return alpha_min < 255
         except Exception:
             return True
@@ -194,6 +224,9 @@ def _normalize_pdf_png_source_image(image: Image.Image) -> Image.Image:
     has_alpha = "A" in image.getbands() or "transparency" in image.info
 
     if image.mode in ("RGB", "RGBA", "L"):
+        return image
+    if image.mode == "CMYK":
+        image, _converted = _convert_cmyk_to_rgb(image)
         return image
     if image.mode == "LA":
         return image.convert("RGBA")
@@ -214,6 +247,7 @@ def _normalize_pdf_soft_mask(mask_image: Image.Image, size: tuple[int, int]) -> 
 def _load_pdf_raster_image_with_soft_mask(document: Any, base_image: dict[str, Any]) -> tuple[Image.Image, bool]:
     """PDF 画像本体と optional soft mask を 1 枚の Pillow 画像へ再構成する。"""
     image = _open_pdf_raster_image(cast(bytes, base_image["image"]))
+    image, _converted = _convert_cmyk_to_rgb(image)
     smask_xref = base_image.get("smask", 0)
     if not isinstance(smask_xref, int) or smask_xref <= 0:
         return image, _pdf_image_has_transparency(image)
@@ -239,6 +273,8 @@ def _save_as_jpeg(image: Image.Image, quality: int) -> bytes:
     JPEG は透過を持てないため、透明画像は先に合成する必要がある。背景色を白にしている
     のは、一般的な業務 PDF で最も違和感が少なく、透過縁に暗いにじみが出にくいためである。
     """
+    image, _converted = _convert_cmyk_to_rgb(image)
+
     if image.mode in ("RGBA", "LA", "PA", "P"):
         if image.mode == "P":
             image = image.convert("RGBA")

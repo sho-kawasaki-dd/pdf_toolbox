@@ -235,6 +235,9 @@
 <li>圧縮モードは
 <code>lossy</code>、<code>lossless</code>、<code>both</code></li>
 <li>既定値は <code>model/compress/settings.py</code> に集約される</li>
+<li><code>model/compress/native_compressor.py</code> は、PDF
+内ラスター画像を読み出した段階で CMYK JPEG を RGB へ正規化し、ICC
+プロファイルがある場合はそれを優先して変換する</li>
 <li><code>model/compress/native_compressor.py</code> の非可逆圧縮は、PDF
 画像の soft mask を復元し、透過付き画像を JPEG へ潰さず PNG
 経路で再圧縮する</li>

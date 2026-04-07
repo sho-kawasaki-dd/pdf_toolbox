@@ -1,6 +1,6 @@
 [project]
 name = "pdf-toolbox"
-version = "1.0.2"
+version = "1.0.3"
 description = "PDF ツールボックス (PySide6)"
 readme = "README.md"
 requires-python = ">=3.14"

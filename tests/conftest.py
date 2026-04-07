@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, cast
 import zipfile
 
 import fitz  # PyMuPDF
@@ -51,7 +52,7 @@ def image_pdf(tmp_path: Path) -> Path:
     png_path = tmp_path / "sample.png"
 
     jpeg_image = Image.new("RGB", (1200, 800))
-    jpeg_pixels = jpeg_image.load()
+    jpeg_pixels = cast(Any, jpeg_image.load())
     for x in range(1200):
         for y in range(800):
             # 単色画像では圧縮差が安定して出にくいため、擬似的な高周波パターンを作る。
@@ -59,7 +60,7 @@ def image_pdf(tmp_path: Path) -> Path:
     jpeg_image.save(jpeg_path, format="JPEG", quality=95)
 
     png_image = Image.new("RGBA", (800, 800))
-    png_pixels = png_image.load()
+    png_pixels = cast(Any, png_image.load())
     for x in range(800):
         for y in range(800):
             # PNG 側は透明度も含めることで、JPEG と異なる分岐を確実に通す。
@@ -72,6 +73,32 @@ def image_pdf(tmp_path: Path) -> Path:
     page1.insert_image(fitz.Rect(72, 72, 523, 372), filename=str(jpeg_path))
     page2 = doc.new_page(width=595, height=842)
     page2.insert_image(fitz.Rect(72, 72, 523, 523), filename=str(png_path))
+    doc.save(str(pdf_path))
+    doc.close()
+    return pdf_path
+
+
+@pytest.fixture()
+def cmyk_image_pdf(tmp_path: Path) -> Path:
+    """CMYK JPEG を含むサンプル PDF を生成して返す。"""
+    pdf_path = tmp_path / "cmyk-images.pdf"
+    jpeg_path = tmp_path / "sample-cmyk.jpg"
+
+    cmyk_image = Image.new("CMYK", (1200, 800))
+    cmyk_pixels = cast(Any, cmyk_image.load())
+    for x in range(1200):
+        for y in range(800):
+            cmyk_pixels[x, y] = (
+                (x * 17) % 255,
+                (y * 11) % 255,
+                ((x + y) * 7) % 255,
+                ((x * 3 + y * 5) % 180),
+            )
+    cmyk_image.save(jpeg_path, format="JPEG", quality=95)
+
+    doc = fitz.open()
+    page = doc.new_page(width=595, height=842)
+    page.insert_image(fitz.Rect(72, 72, 523, 372), filename=str(jpeg_path))
     doc.save(str(pdf_path))
     doc.close()
     return pdf_path
