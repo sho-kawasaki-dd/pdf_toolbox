@@ -6,6 +6,14 @@ from model.extract.extract_session import ExtractSession, SourceDocument, Source
 from model.extract.page_thumbnail_loader import PageThumbnailLoader, PageThumbnailResult
 from model.merge.merge_processor import MergeProcessor
 from model.merge.merge_session import MergeSession
+from model.flatten.flatten_processor import FlattenProcessor
+from model.flatten.flatten_session import (
+	FlattenBatchPlan,
+	FlattenCandidate,
+	FlattenConflict,
+	FlattenJob,
+	FlattenSession,
+)
 from model.merge.thumbnail_loader import ThumbnailLoader, ThumbnailResult
 from model.pdf_to_jpeg.pdf_to_jpeg_processor import PdfToJpegProcessor
 from model.pdf_to_jpeg.pdf_to_jpeg_session import PdfToJpegExportJob, PdfToJpegSession
@@ -28,6 +36,12 @@ __all__ = [
 	"TargetPageEntry",
 	"MergeProcessor",
 	"MergeSession",
+	"FlattenBatchPlan",
+	"FlattenCandidate",
+	"FlattenConflict",
+	"FlattenJob",
+	"FlattenProcessor",
+	"FlattenSession",
 	"ThumbnailLoader",
 	"ThumbnailResult",
 	"PdfToJpegSession",

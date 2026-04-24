@@ -113,6 +113,37 @@ def broken_pdf(tmp_path: Path) -> Path:
 
 
 @pytest.fixture()
+def annotated_pdf(tmp_path: Path) -> Path:
+    """注釈を含む 1 ページ PDF を生成して返す。"""
+    pdf_path = tmp_path / "annotated.pdf"
+    doc = fitz.open()
+    page = doc.new_page(width=595, height=842)
+    page.insert_text(fitz.Point(72, 72), "Annotated Page", fontsize=24)
+    annotation = page.add_highlight_annot(fitz.Rect(72, 56, 240, 86))
+    annotation.update()
+    doc.save(str(pdf_path))
+    doc.close()
+    return pdf_path
+
+
+@pytest.fixture()
+def encrypted_pdf(tmp_path: Path) -> Path:
+    """パスワード付きの暗号化 PDF を生成して返す。"""
+    pdf_path = tmp_path / "encrypted.pdf"
+    doc = fitz.open()
+    page = doc.new_page(width=595, height=842)
+    page.insert_text(fitz.Point(72, 72), "Encrypted Page", fontsize=24)
+    doc.save(
+        str(pdf_path),
+        user_pw="user-pass",
+        owner_pw="owner-pass",
+        encryption=fitz.PDF_ENCRYPT_AES_256,
+    )
+    doc.close()
+    return pdf_path
+
+
+@pytest.fixture()
 def mixed_input_folder(sample_pdf: Path, broken_pdf: Path, tmp_path: Path) -> Path:
     """正常 PDF・壊れた PDF・非 PDF を混在させたフォルダを返す。"""
     folder = tmp_path / "mixed-input"
