@@ -91,6 +91,7 @@ class FlattenView(QWidget):
         super().__init__(parent)
         self._can_remove_selected = False
         self._build_ui()
+        self.update_ui(FlattenUiState())
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)

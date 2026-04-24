@@ -28,16 +28,57 @@
 </head>
 <body>
 <h1 id="リリースノート">リリースノート</h1>
+<h2 id="v1.1.0">v1.1.0</h2>
+<p>リリース日: 2026-04-25</p>
+<h3 id="概要">概要</h3>
+<p>PDF フラット化機能を追加し、注釈やフォーム付き PDF を編集不能な配布用
+PDF として書き出せるようにしました。</p>
+<p>あわせて、フォーム widget と broken appearance 系 PDF
+を含む回帰テスト、flatten presenter / view
+の単体テスト、利用者向け文書と開発者向け文書の更新を行いました。</p>
+<h3 id="修正内容">修正内容</h3>
+<ul>
+<li><code>model/flatten/</code> に対して、フォーム widget 平坦化と
+broken appearance 系 PDF の回帰テストを追加しました</li>
+<li><code>tests/conftest.py</code> に form / widget PDF と broken
+appearance PDF の fixture を追加しました</li>
+<li><code>tests/presenter/test_flatten_presenter.py</code> と
+<code>tests/view/flatten/test_flatten_view.py</code> を追加し、flatten
+の状態遷移、上書き確認、DnD、実行中制約を固定しました</li>
+<li><code>tests/presenter/test_app_coordinator.py</code> と
+<code>tests/view/test_main_window.py</code> の flatten smoke coverage
+を補強しました</li>
+<li><code>README.md</code>、<code>docs/user-manual.md</code>、<code>docs/developer-architecture.md</code>
+を flatten 追加後の内容へ更新し、HTML も再生成対象に含めました</li>
+</ul>
+<h3 id="影響範囲">影響範囲</h3>
+<ul>
+<li>利用者向け影響: 注釈やフォームを含む PDF を
+<code>_flattened.pdf</code> として簡単に固定化できるようになります</li>
+<li>互換性: 既存の split / merge / extract / compress / PDF→JPEG
+の操作手順は変わりません</li>
+<li>保守面: flatten の worker / polling / failure
+契約がテストと設計文書に固定され、今後の改修で回帰を検出しやすくなります</li>
+</ul>
+<h3 id="確認済み事項">確認済み事項</h3>
+<ul>
+<li><code>tests/model/flatten/test_flatten_session.py</code></li>
+<li><code>tests/model/flatten/test_flatten_processor.py</code></li>
+<li><code>tests/presenter/test_flatten_presenter.py</code></li>
+<li><code>tests/view/flatten/test_flatten_view.py</code></li>
+<li><code>tests/presenter/test_app_coordinator.py -k flatten</code></li>
+<li><code>tests/view/test_main_window.py -k flatten</code></li>
+</ul>
 <h2 id="v1.0.3">v1.0.3</h2>
 <p>リリース日: 2026-04-07</p>
-<h3 id="概要">概要</h3>
+<h3 id="概要-1">概要</h3>
 <p>PDF 圧縮機能で、CMYK JPEG 画像を含む PDF
 を非可逆圧縮した際に、画像の色が不安定になったり、後段の JPEG/PNG
 保存処理が不安定になったりするケースへの対策を追加しました。</p>
 <p>今回の更新では、PDF から抽出した CMYK 画像を RGB
 系へ正規化してから後段の圧縮処理へ渡すようにし、ICC
 プロファイルを持つ画像ではその色情報を優先して扱います。</p>
-<h3 id="修正内容">修正内容</h3>
+<h3 id="修正内容-1">修正内容</h3>
 <ul>
 <li><code>model/compress/native_compressor.py</code> に、ICC
 プロファイルを考慮した CMYK → RGB 正規化処理を追加しました</li>
@@ -48,7 +89,7 @@
 <li>CMYK JPEG を含むサンプル PDF
 フィクスチャと回帰テストを追加しました</li>
 </ul>
-<h3 id="影響範囲">影響範囲</h3>
+<h3 id="影響範囲-1">影響範囲</h3>
 <ul>
 <li>利用者向け影響: CMYK JPEG を含む PDF
 でも、圧縮時の色崩れや保存失敗が起きにくくなります</li>
@@ -56,7 +97,7 @@
 <li>保守面: PDF
 圧縮パイプラインの入力画像モードが整理され、色空間差分による不具合を追跡しやすくなります</li>
 </ul>
-<h3 id="確認済み事項">確認済み事項</h3>
+<h3 id="確認済み事項-1">確認済み事項</h3>
 <ul>
 <li><code>tests/model/compress/test_native_compressor.py</code> の CMYK
 関連テストを通過</li>
@@ -65,12 +106,12 @@
 </ul>
 <h2 id="v1.0.2">v1.0.2</h2>
 <p>リリース日: 2026-04-02</p>
-<h3 id="概要-1">概要</h3>
+<h3 id="概要-2">概要</h3>
 <p>PDF 結合機能で、出力 PDF は生成されているにもかかわらず、GUI
 上では「結合準備中」のまま完了判定されず、ツールバー操作も復帰しない不具合を修正しました。</p>
 <p>あわせて、同じ構造の非同期ポーリングを持つ PDF
 抽出機能にも予防修正を適用しました。</p>
-<h3 id="修正内容-1">修正内容</h3>
+<h3 id="修正内容-2">修正内容</h3>
 <ul>
 <li>PDF 結合の Presenter
 で、バックグラウンド処理開始直後に初回ポーリングを必ず 1
@@ -82,7 +123,7 @@
 <li>PDF 結合と PDF 抽出の Presenter
 テストに、即時完了ケースの回帰テストを追加しました</li>
 </ul>
-<h3 id="影響範囲-1">影響範囲</h3>
+<h3 id="影響範囲-2">影響範囲</h3>
 <ul>
 <li>利用者向け影響: PDF
 結合完了後に画面が準備中のまま固まることがある問題が解消されます</li>
@@ -90,7 +131,7 @@
 <li>保守面: 非同期処理の完了検知が安定し、短時間ジョブでも UI
 状態が取り残されにくくなります</li>
 </ul>
-<h3 id="確認済み事項-1">確認済み事項</h3>
+<h3 id="確認済み事項-2">確認済み事項</h3>
 <ul>
 <li><code>tests/presenter/test_merge_presenter.py</code> を通過</li>
 <li><code>tests/presenter/test_extract_presenter.py</code> を通過</li>

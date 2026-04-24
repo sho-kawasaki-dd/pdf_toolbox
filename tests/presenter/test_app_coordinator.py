@@ -200,3 +200,20 @@ class TestAppCoordinator:
         coordinator.on_window_closing()
 
         coordinator.flatten_presenter.on_closing.assert_called_once()
+
+    def test_window_closing_delegates_to_flatten_presenter_for_current_screen(self, qtbot):
+        window = MainWindow()
+        qtbot.addWidget(window)
+        coordinator = AppCoordinator(window)
+        window.show_flatten()
+        coordinator.split_presenter.has_active_session = MagicMock(return_value=False)
+        coordinator.merge_presenter.has_active_session = MagicMock(return_value=False)
+        coordinator.compress_presenter.has_active_session = MagicMock(return_value=False)
+        coordinator.pdf_to_jpeg_presenter.has_active_session = MagicMock(return_value=False)
+        coordinator.extract_presenter.has_active_session = MagicMock(return_value=False)
+        coordinator.flatten_presenter.has_active_session = MagicMock(return_value=False)
+        coordinator.flatten_presenter.on_closing = MagicMock()
+
+        coordinator.on_window_closing()
+
+        coordinator.flatten_presenter.on_closing.assert_called_once()

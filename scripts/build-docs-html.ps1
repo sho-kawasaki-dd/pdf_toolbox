@@ -10,11 +10,11 @@ $docsDir = Join-Path $repoRoot 'docs'
 $cssRoot = Join-Path $repoRoot 'github-markdown.css'
 
 if (-not (Get-Command pandoc -ErrorAction SilentlyContinue)) {
-    throw 'pandoc が見つかりません。pandoc をインストールしてから再実行してください。'
+    throw 'pandoc was not found. Install pandoc and run this script again.'
 }
 
 if (-not (Test-Path $cssRoot)) {
-    throw "CSS ファイルが見つかりません: $cssRoot"
+    throw "CSS file was not found: $cssRoot"
 }
 
 pandoc $readmeMd -s -o $readmeHtml -c 'github-markdown.css'
@@ -24,7 +24,7 @@ Get-ChildItem $docsDir -Filter '*.md' -File | ForEach-Object {
     pandoc $_.FullName -s -o $outputHtml -c '../github-markdown.css'
 }
 
-Write-Host 'HTML 変換が完了しました:'
+Write-Host 'HTML regeneration completed:'
 Get-ChildItem $readmeHtml, (Join-Path $docsDir '*.html') |
     Sort-Object FullName |
     Select-Object Name, LastWriteTime |

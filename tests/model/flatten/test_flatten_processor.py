@@ -110,6 +110,55 @@ def test_start_flatten_creates_output_and_queue_events(annotated_pdf: Path) -> N
         assert flattened.page_count == 1
 
 
+def test_start_flatten_flattens_form_widgets(form_widget_pdf: Path) -> None:
+    session = FlattenSession()
+    session.add_input(str(form_widget_pdf))
+
+    processor = FlattenProcessor()
+    plan = processor.prepare_batch(session)
+
+    with fitz.open(str(form_widget_pdf)) as source_doc:
+        source_widgets = list(source_doc[0].widgets())
+        assert len(source_widgets) == 2
+
+    processor.start_flatten(session, plan)
+    _wait_for_completion(processor)
+    results = processor.poll_results()
+
+    successes = [result for result in results if result["type"] == "success"]
+    finished = [result for result in results if result["type"] == "finished"]
+
+    assert len(successes) == 1
+    assert finished[0]["success_count"] == 1
+
+    output_path = Path(plan.jobs[0].output_path)
+    with fitz.open(str(output_path)) as flattened:
+        assert list(flattened[0].widgets()) == []
+        assert flattened[0].first_annot is None
+
+
+def test_start_flatten_finishes_with_broken_appearance_pdf(broken_appearance_pdf: Path) -> None:
+    session = FlattenSession()
+    session.add_input(str(broken_appearance_pdf))
+
+    processor = FlattenProcessor()
+    plan = processor.prepare_batch(session)
+    processor.start_flatten(session, plan)
+    _wait_for_completion(processor)
+    results = processor.poll_results()
+
+    failures = [result for result in results if result["type"] == "failure"]
+    finished = [result for result in results if result["type"] == "finished"]
+
+    assert failures == []
+    assert len(finished) == 1
+    assert finished[0]["success_count"] == 1
+
+    output_path = Path(plan.jobs[0].output_path)
+    with fitz.open(str(output_path)) as flattened:
+        assert list(flattened[0].widgets()) == []
+
+
 def test_start_flatten_reports_broken_pdf_failure(broken_pdf: Path) -> None:
     session = FlattenSession()
     session.add_input(str(broken_pdf))

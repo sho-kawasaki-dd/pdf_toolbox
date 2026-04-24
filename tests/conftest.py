@@ -126,6 +126,53 @@ def annotated_pdf(tmp_path: Path) -> Path:
     return pdf_path
 
 
+def _build_form_pdf(pdf_path: Path) -> Path:
+    """テキストフィールドとチェックボックスを持つ PDF を生成する。"""
+    doc = fitz.open()
+    page = doc.new_page(width=595, height=842)
+    page.insert_text(fitz.Point(72, 48), "Form Fixture", fontsize=20)
+
+    text_widget = fitz.Widget()
+    text_widget.field_name = "user_name"
+    text_widget.field_label = "User Name"
+    text_widget.field_type = fitz.PDF_WIDGET_TYPE_TEXT
+    text_widget.field_value = "Alice Example"
+    text_widget.rect = fitz.Rect(72, 72, 280, 100)
+    page.add_widget(text_widget)
+
+    checkbox_widget = fitz.Widget()
+    checkbox_widget.field_name = "agree_terms"
+    checkbox_widget.field_label = "Agree Terms"
+    checkbox_widget.field_type = fitz.PDF_WIDGET_TYPE_CHECKBOX
+    checkbox_widget.field_value = True
+    checkbox_widget.rect = fitz.Rect(72, 128, 92, 148)
+    page.add_widget(checkbox_widget)
+
+    page.insert_text(fitz.Point(100, 144), "I agree", fontsize=14)
+    doc.save(str(pdf_path))
+    doc.close()
+    return pdf_path
+
+
+@pytest.fixture()
+def form_widget_pdf(tmp_path: Path) -> Path:
+    """テキストフィールドとチェックボックスを持つ PDF を返す。"""
+    return _build_form_pdf(tmp_path / "form-widget.pdf")
+
+
+@pytest.fixture()
+def broken_appearance_pdf(tmp_path: Path) -> Path:
+    """壊れた Appearance 参照を持つ form PDF を返す。"""
+    source_path = _build_form_pdf(tmp_path / "broken-appearance-source.pdf")
+    broken_path = tmp_path / "broken-appearance.pdf"
+    raw = source_path.read_bytes()
+    broken_raw = raw.replace(b"/AP<</N 7 0 R>>>>", b"/AP<</N 999 0 R>>>>", 1)
+    if broken_raw == raw:
+        broken_raw = raw.replace(b"/AP << /N 7 0 R >>", b"/AP << /N 999 0 R >>", 1)
+    broken_path.write_bytes(broken_raw)
+    return broken_path
+
+
 @pytest.fixture()
 def encrypted_pdf(tmp_path: Path) -> Path:
     """パスワード付きの暗号化 PDF を生成して返す。"""
