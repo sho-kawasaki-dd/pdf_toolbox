@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from presenter.compress_presenter import CompressionPresenter
 from presenter.extract_presenter import ExtractPresenter
+from presenter.flatten_presenter import FlattenPresenter
 from presenter.merge_presenter import MergePresenter
 from presenter.pdf_to_jpeg_presenter import PdfToJpegPresenter
 from presenter.split_presenter import SplitPresenter
@@ -16,6 +17,7 @@ FEATURE_LABELS = {
     "extract": "PDF 抽出",
     "compress": "PDF 圧縮",
     "pdf-to-jpeg": "PDF → JPEG",
+    "flatten": "PDFフラット化",
 }
 
 
@@ -30,6 +32,7 @@ class AppCoordinator:
         self._merge_presenter = MergePresenter(view)
         self._extract_presenter = ExtractPresenter(view)
         self._compress_presenter = CompressionPresenter(view)
+        self._flatten_presenter = FlattenPresenter(view)
         self._pdf_to_jpeg_presenter = PdfToJpegPresenter(view)
 
         # 画面固有の戻る操作とウィンドウ終了操作をここへ集約して、
@@ -40,6 +43,7 @@ class AppCoordinator:
         self._view.compress_view.back_to_home_requested.connect(self.on_back_to_home)
         self._view.pdf_to_jpeg_view.back_to_home_requested.connect(self.on_back_to_home)
         self._view.extract_view.back_to_home_requested.connect(self.on_back_to_home)
+        self._view.flatten_view.back_to_home_requested.connect(self.on_back_to_home)
         self._view.set_close_handler(self.on_window_closing)
 
     @property
@@ -57,6 +61,10 @@ class AppCoordinator:
     @property
     def extract_presenter(self) -> ExtractPresenter:
         return self._extract_presenter
+
+    @property
+    def flatten_presenter(self) -> FlattenPresenter:
+        return self._flatten_presenter
 
     @property
     def pdf_to_jpeg_presenter(self) -> PdfToJpegPresenter:
@@ -82,6 +90,10 @@ class AppCoordinator:
 
         if feature == "pdf-to-jpeg":
             self._view.show_pdf_to_jpeg()
+            return
+
+        if feature == "flatten":
+            self._view.show_flatten()
             return
 
         label = FEATURE_LABELS.get(feature, feature)
@@ -153,6 +165,18 @@ class AppCoordinator:
                 ):
                     return
 
+        if current_widget is self._view.flatten_view:
+            if self._flatten_presenter.is_busy():
+                self._view.show_info("実行中", "フラット化処理の実行中はホームへ戻れません。")
+                return
+
+            if self._flatten_presenter.has_active_session():
+                if not self._view.ask_yes_no(
+                    "確認",
+                    "現在のフラット化セッションを保持したままホームへ戻ります。よろしいですか？",
+                ):
+                    return
+
         self._view.show_home()
 
     def on_window_closing(self) -> None:
@@ -178,6 +202,10 @@ class AppCoordinator:
 
         if current_widget is self._view.extract_view or self._extract_presenter.has_active_session():
             self._extract_presenter.on_closing()
+            return
+
+        if current_widget is self._view.flatten_view or self._flatten_presenter.has_active_session():
+            self._flatten_presenter.on_closing()
             return
 
         self._view.destroy_window()

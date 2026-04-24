@@ -23,6 +23,7 @@ class TestHomeView:
         assert view.feature_buttons["merge"].isEnabled()
         assert view.feature_buttons["pdf-to-jpeg"].isEnabled()
         assert view.feature_buttons["extract"].isEnabled()
+        assert view.feature_buttons["flatten"].isEnabled()
 
     def test_click_merge_emits_feature_selected(self, qtbot):
         view = HomeView()
@@ -64,12 +65,23 @@ class TestHomeView:
 
         assert received == ["pdf-to-jpeg"]
 
+    def test_click_flatten_emits_feature_selected(self, qtbot):
+        view = HomeView()
+        qtbot.addWidget(view)
+        received = []
+        view.feature_selected.connect(received.append)
+
+        qtbot.mouseClick(view.feature_buttons["flatten"], Qt.MouseButton.LeftButton)
+
+        assert received == ["flatten"]
+
     def test_disabled_cards_show_preparing_text(self, qtbot):
         view = HomeView()
         qtbot.addWidget(view)
         assert "準備中" not in view.feature_buttons["merge"].text()
         assert "準備中" not in view.feature_buttons["pdf-to-jpeg"].text()
         assert "準備中" not in view.feature_buttons["compress"].text()
+        assert "準備中" not in view.feature_buttons["flatten"].text()
 
     def test_cards_use_icon_buttons_with_text_under_icon(self, qtbot):
         view = HomeView()
@@ -89,6 +101,7 @@ class TestHomeView:
         assert not view.feature_buttons["extract"].icon().isNull()
         assert not view.feature_buttons["compress"].icon().isNull()
         assert not view.feature_buttons["pdf-to-jpeg"].icon().isNull()
+        assert not view.feature_buttons["flatten"].icon().isNull()
         assert view.mascot_card is not None
         assert view.mascot_card.objectName() == "mascot_card"
         assert view.mascot_card.image_label.pixmap() is not None
@@ -100,6 +113,12 @@ class TestHomeView:
 
         assert "PDF → JPEG" in view.feature_buttons["pdf-to-jpeg"].text()
 
+    def test_flatten_card_has_expected_label(self, qtbot):
+        view = HomeView()
+        qtbot.addWidget(view)
+
+        assert view.feature_buttons["flatten"].text() == "PDFフラット化"
+
     def test_mascot_card_is_added_to_bottom_right_slot(self, qtbot):
         view = HomeView()
         qtbot.addWidget(view)
@@ -110,7 +129,7 @@ class TestHomeView:
         assert view.mascot_card is not None
         assert grid.indexOf(view.mascot_card) >= 0
         row, column, _, _ = grid.getItemPosition(grid.indexOf(view.mascot_card))
-        assert (row, column) == (1, 2)
+        assert (row, column) == (2, 0)
 
     def test_cards_keep_portrait_ratio(self, qtbot):
         view = HomeView()

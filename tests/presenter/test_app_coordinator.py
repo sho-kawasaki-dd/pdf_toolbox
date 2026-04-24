@@ -46,6 +46,15 @@ class TestAppCoordinator:
 
         assert window.stack.currentWidget() is window.pdf_to_jpeg_view
 
+    def test_flatten_card_shows_flatten_screen(self, qtbot):
+        window = MainWindow()
+        qtbot.addWidget(window)
+        coordinator = AppCoordinator(window)
+
+        coordinator._on_feature_selected("flatten")
+
+        assert window.stack.currentWidget() is window.flatten_view
+
     def test_back_to_home_confirms_active_session(self, qtbot):
         window = MainWindow()
         qtbot.addWidget(window)
@@ -149,3 +158,45 @@ class TestAppCoordinator:
         coordinator.on_window_closing()
 
         coordinator.pdf_to_jpeg_presenter.on_closing.assert_called_once()
+
+    def test_back_to_home_blocked_while_flattening(self, qtbot):
+        window = MainWindow()
+        qtbot.addWidget(window)
+        coordinator = AppCoordinator(window)
+        window.show_flatten()
+        window.show_info = MagicMock()
+        coordinator.flatten_presenter.is_busy = MagicMock(return_value=True)
+
+        coordinator.on_back_to_home()
+
+        window.show_info.assert_called_once()
+
+    def test_back_to_home_confirms_active_flatten_session(self, qtbot):
+        window = MainWindow()
+        qtbot.addWidget(window)
+        coordinator = AppCoordinator(window)
+        window.show_flatten()
+        window.ask_yes_no = MagicMock(return_value=True)
+        coordinator.flatten_presenter.has_active_session = MagicMock(return_value=True)
+        coordinator.flatten_presenter.is_busy = MagicMock(return_value=False)
+
+        coordinator.on_back_to_home()
+
+        window.ask_yes_no.assert_called_once()
+        assert window.stack.currentWidget() is window.home_view
+
+    def test_window_closing_delegates_to_flatten_presenter_for_active_session(self, qtbot):
+        window = MainWindow()
+        qtbot.addWidget(window)
+        coordinator = AppCoordinator(window)
+        coordinator.split_presenter.has_active_session = MagicMock(return_value=False)
+        coordinator.merge_presenter.has_active_session = MagicMock(return_value=False)
+        coordinator.compress_presenter.has_active_session = MagicMock(return_value=False)
+        coordinator.pdf_to_jpeg_presenter.has_active_session = MagicMock(return_value=False)
+        coordinator.extract_presenter.has_active_session = MagicMock(return_value=False)
+        coordinator.flatten_presenter.has_active_session = MagicMock(return_value=True)
+        coordinator.flatten_presenter.on_closing = MagicMock()
+
+        coordinator.on_window_closing()
+
+        coordinator.flatten_presenter.on_closing.assert_called_once()

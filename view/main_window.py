@@ -16,6 +16,7 @@ from PIL import Image
 
 from view.compress.compress_view import CompressionUiState, CompressionView
 from view.extract.extract_view import ExtractUiState, ExtractView
+from view.flatten.flatten_view import FlattenUiState, FlattenView
 from view.home_view import HomeView
 from view.merge.merge_view import MergeUiState, MergeView
 from view.pdf_to_jpeg.pdf_to_jpeg_view import PdfToJpegUiState, PdfToJpegView
@@ -39,6 +40,7 @@ class MainWindow(QMainWindow):
         self._compress_presenter: Any = None
         self._merge_presenter: Any = None
         self._extract_presenter: Any = None
+        self._flatten_presenter: Any = None
         self._pdf_to_jpeg_presenter: Any = None
         self._close_handler: Callable[[], None] | None = None
         self._timers: dict[str, QTimer] = {}
@@ -53,6 +55,7 @@ class MainWindow(QMainWindow):
         self.merge_view = MergeView()
         self.compress_view = CompressionView()
         self.extract_view = ExtractView()
+        self.flatten_view = FlattenView()
         self.pdf_to_jpeg_view = PdfToJpegView()
         # 画面切り替えは stacked widget へ寄せ、MainWindow 自体は
         # 「どの画面を見せるか」だけを知る構成にする。
@@ -61,6 +64,7 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(self.merge_view)
         self.stack.addWidget(self.compress_view)
         self.stack.addWidget(self.extract_view)
+        self.stack.addWidget(self.flatten_view)
         self.stack.addWidget(self.pdf_to_jpeg_view)
         self.stack.setCurrentWidget(self.home_view)
 
@@ -97,6 +101,11 @@ class MainWindow(QMainWindow):
         """抽出画面のイベントを Presenter に接続する。"""
         self._extract_presenter = presenter
         self.extract_view.set_presenter(presenter)
+
+    def set_flatten_presenter(self, presenter: Any) -> None:
+        """フラット化画面のイベントを Presenter に接続する。"""
+        self._flatten_presenter = presenter
+        self.flatten_view.set_presenter(presenter)
 
     def set_pdf_to_jpeg_presenter(self, presenter: Any) -> None:
         """PDF→JPEG 画面のイベントを Presenter に接続する。"""
@@ -164,6 +173,11 @@ class MainWindow(QMainWindow):
         self.stack.setCurrentWidget(self.extract_view)
         self._update_shortcuts_for_screen("home")
 
+    def show_flatten(self) -> None:
+        """フラット化画面を表示する。"""
+        self.stack.setCurrentWidget(self.flatten_view)
+        self._update_shortcuts_for_screen("home")
+
     def show_pdf_to_jpeg(self) -> None:
         """PDF→JPEG 画面を表示する。"""
         self.stack.setCurrentWidget(self.pdf_to_jpeg_view)
@@ -204,6 +218,10 @@ class MainWindow(QMainWindow):
         """抽出画面の状態を更新する。"""
         self.extract_view.update_ui(state)
 
+    def update_flatten_ui(self, state: FlattenUiState) -> None:
+        """フラット化画面の状態を更新する。"""
+        self.flatten_view.update_ui(state)
+
     def update_pdf_to_jpeg_ui(self, state: PdfToJpegUiState) -> None:
         """PDF→JPEG 画面の状態を更新する。"""
         self.pdf_to_jpeg_view.update_ui(state)
@@ -219,6 +237,10 @@ class MainWindow(QMainWindow):
     def get_selected_merge_inputs(self) -> list[str]:
         """結合画面で選択中の入力パス一覧を返す。"""
         return self.merge_view.get_selected_input_paths()
+
+    def get_selected_flatten_inputs(self) -> list[str]:
+        """フラット化画面で選択中の入力パス一覧を返す。"""
+        return self.flatten_view.get_selected_input_paths()
 
     # ------------------------------------------------------------------
     # ダイアログ
