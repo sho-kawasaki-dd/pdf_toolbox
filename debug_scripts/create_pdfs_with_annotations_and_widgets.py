@@ -3,6 +3,17 @@ import random
 from pathlib import Path
 
 
+ANNOTATION_OPACITIES = (1.0, 0.75, 0.5, 0.25, 0.0)
+
+
+def make_random_color():
+    return (random.random(), random.random(), random.random())
+
+
+def make_random_annotation_opacity():
+    return random.choice(ANNOTATION_OPACITIES)
+
+
 def make_random_rect(width, height, margin=50, min_size=20):
     x0 = random.uniform(margin, width - margin)
     x1 = random.uniform(margin, width - margin)
@@ -41,11 +52,16 @@ def create_debug_pdfs(output_dir="test_data", num_files=50, pages_per_file=10):
                 rect = make_random_rect(width, height)
                 if i % 2 == 0:
                     annot = page.add_rect_annot(rect)
-                    annot.set_colors(stroke=(random.random(), 0, 0), fill=(0, random.random(), 0))
+                    annot.set_colors(stroke=make_random_color(), fill=make_random_color())
+                    annot.set_opacity(make_random_annotation_opacity())
                     annot.update()
                 else:
                     annot = page.add_freetext_annot(rect, f"Annot {i} Page {p_idx}")
-                    annot.update(text_color=(0, 0, random.random()))
+                    annot.update(
+                        text_color=make_random_color(),
+                        fill_color=make_random_color(),
+                        opacity=make_random_annotation_opacity(),
+                    )
 
             # 2. ウィジェット（フォーム）の追加
             for i in range(10):
@@ -55,6 +71,7 @@ def create_debug_pdfs(output_dir="test_data", num_files=50, pages_per_file=10):
                 widget.field_name = f"field_{p_idx}_{i}"
                 widget.field_value = f"Value {i}"
                 widget.field_type = fitz.PDF_WIDGET_TYPE_TEXT if i % 2 == 0 else fitz.PDF_WIDGET_TYPE_CHECKBOX
+                widget.fill_color = make_random_color()
                 page.add_widget(widget)
 
         # パスの結合は / 演算子を使用
