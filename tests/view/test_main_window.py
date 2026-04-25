@@ -11,6 +11,7 @@ from PIL import Image
 from PySide6.QtWidgets import QFileDialog, QMessageBox, QFrame
 
 from view.compress.compress_view import CompressionInputItem, CompressionUiState
+from view.flatten.flatten_view import FlattenInputItem, FlattenUiState
 from view.merge.merge_view import MergeInputItem, MergeUiState
 from view.pdf_to_jpeg.pdf_to_jpeg_view import PdfToJpegUiState
 from view.main_window import MainWindow, UiState
@@ -80,6 +81,14 @@ class TestMainWindowInstantiation:
         win.show_pdf_to_jpeg()
 
         assert win.stack.currentWidget() is win.pdf_to_jpeg_view
+
+    def test_can_show_flatten_screen(self, qtbot):
+        win = MainWindow()
+        qtbot.addWidget(win)
+
+        win.show_flatten()
+
+        assert win.stack.currentWidget() is win.flatten_view
 
     def test_initial_size(self, qtbot):
         win = MainWindow()
@@ -188,6 +197,23 @@ class TestMainWindowStubs:
         win.pdf_to_jpeg_view.btn_choose_pdf.click()
         mock_presenter.choose_pdf_file.assert_called_once()
 
+    def test_set_flatten_presenter(self, qtbot):
+        win = MainWindow()
+        qtbot.addWidget(win)
+        mock_presenter = MagicMock()
+
+        win.set_flatten_presenter(mock_presenter)
+
+        win.flatten_view.btn_add_pdf.click()
+        mock_presenter.add_pdf_files.assert_called_once()
+
+        win.flatten_view.btn_add_folder.click()
+        mock_presenter.add_folder.assert_called_once()
+
+        win.update_flatten_ui(FlattenUiState(can_execute=True))
+        win.flatten_view.btn_execute.click()
+        mock_presenter.execute_flatten.assert_called_once()
+
     def test_update_pdf_to_jpeg_ui(self, qtbot):
         win = MainWindow()
         qtbot.addWidget(win)
@@ -206,6 +232,41 @@ class TestMainWindowStubs:
         assert win.pdf_to_jpeg_view.txt_selected_pdf.text() == "C:/work/sample.pdf"
         assert win.pdf_to_jpeg_view.txt_output_dir.text() == "C:/out"
         assert win.pdf_to_jpeg_view.btn_execute.isEnabled()
+
+    def test_update_flatten_ui(self, qtbot):
+        win = MainWindow()
+        qtbot.addWidget(win)
+
+        win.update_flatten_ui(
+            FlattenUiState(
+                input_items=[FlattenInputItem(path="C:/work/sample.pdf", label="[PDF] C:/work/sample.pdf")],
+                progress_value=25,
+                can_execute=True,
+            ),
+        )
+
+        assert win.flatten_view.input_list.count() == 1
+        assert win.flatten_view.progress_bar.value() == 25
+        assert win.flatten_view.btn_execute.isEnabled()
+
+    def test_get_selected_flatten_inputs(self, qtbot):
+        win = MainWindow()
+        qtbot.addWidget(win)
+
+        win.update_flatten_ui(
+            FlattenUiState(
+                input_items=[
+                    FlattenInputItem(path="C:/one.pdf", label="[PDF] C:/one.pdf"),
+                    FlattenInputItem(path="C:/two.pdf", label="[PDF] C:/two.pdf"),
+                ],
+                can_remove_selected=True,
+                can_clear_inputs=True,
+            ),
+        )
+
+        win.flatten_view.input_list.item(1).setSelected(True)
+
+        assert win.get_selected_flatten_inputs() == ["C:/two.pdf"]
 
     def test_get_pdf_to_jpeg_preview_size(self, qtbot):
         win = MainWindow()

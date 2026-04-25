@@ -1,5 +1,38 @@
 # リリースノート
 
+## v1.1.0
+
+リリース日: 2026-04-25
+
+### 概要
+
+PDF フラット化機能を追加し、注釈やフォーム付き PDF を編集不能な配布用 PDF として書き出せるようにしました。
+
+あわせて、フォーム widget と broken appearance 系 PDF を含む回帰テスト、flatten presenter / view の単体テスト、利用者向け文書と開発者向け文書の更新を行いました。
+
+### 修正内容
+
+- `model/flatten/` に対して、フォーム widget 平坦化と broken appearance 系 PDF の回帰テストを追加しました
+- `tests/conftest.py` に form / widget PDF と broken appearance PDF の fixture を追加しました
+- `tests/presenter/test_flatten_presenter.py` と `tests/view/flatten/test_flatten_view.py` を追加し、flatten の状態遷移、上書き確認、DnD、実行中制約を固定しました
+- `tests/presenter/test_app_coordinator.py` と `tests/view/test_main_window.py` の flatten smoke coverage を補強しました
+- `README.md`、`docs/user-manual.md`、`docs/developer-architecture.md` を flatten 追加後の内容へ更新し、HTML も再生成対象に含めました
+
+### 影響範囲
+
+- 利用者向け影響: 注釈やフォームを含む PDF を `_flattened.pdf` として簡単に固定化できるようになります
+- 互換性: 既存の split / merge / extract / compress / PDF→JPEG の操作手順は変わりません
+- 保守面: flatten の worker / polling / failure 契約がテストと設計文書に固定され、今後の改修で回帰を検出しやすくなります
+
+### 確認済み事項
+
+- `tests/model/flatten/test_flatten_session.py`
+- `tests/model/flatten/test_flatten_processor.py`
+- `tests/presenter/test_flatten_presenter.py`
+- `tests/view/flatten/test_flatten_view.py`
+- `tests/presenter/test_app_coordinator.py -k flatten`
+- `tests/view/test_main_window.py -k flatten`
+
 ## v1.0.3
 
 リリース日: 2026-04-07

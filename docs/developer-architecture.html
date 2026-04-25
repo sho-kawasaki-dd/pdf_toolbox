@@ -268,6 +268,35 @@ Processor が担う</li>
 <li>出力先は常に <code>保存先/PDF名/</code></li>
 <li>透明要素を含むページは白背景へ合成して JPEG 保存する</li>
 </ul>
+<h3 id="pdfフラット化">5.6 PDFフラット化</h3>
+<ul>
+<li>Presenter: <code>presenter/flatten_presenter.py</code></li>
+<li>Model: <code>model/flatten/flatten_session.py</code>,
+<code>model/flatten/flatten_processor.py</code></li>
+<li>View: <code>view/flatten/*</code></li>
+</ul>
+<p>主なポイント:</p>
+<ul>
+<li>入力は PDF とフォルダで、フォルダは再帰探索して <code>.pdf</code>
+のみを拾う</li>
+<li><code>FlattenSession</code>
+は入力一覧、進捗件数、出力命名規則、Windows path 制約判定を保持する</li>
+<li><code>FlattenProcessor.prepare_batch()</code> は探索、非 PDF /
+missing input の skip、既存出力との conflict 分離、出力パス長の
+preflight failure 化を担当する</li>
+<li><code>FlattenProcessor.start_flatten()</code> は worker thread
+を起動し、result queue へ success / failure / skipped / progress /
+finished / cancelled を順次積む</li>
+<li>Presenter は <code>MainWindow.schedule()</code> を使って polling
+し、進捗文言、完了ダイアログ、cancel 後 close を制御する</li>
+<li>実際の平坦化責務は <code>fitz.Document.bake()</code>
+に寄せ、annotation と widget
+を通常ページ内容へ焼き込んだ後、テンポラリ保存から
+<code>os.replace()</code> で確定する</li>
+<li>失敗系として、invalid PDF、encrypted PDF、保存先
+PermissionError、MAX_PATH 超過、broken appearance 系を failure / skip
+集計へ落とし、バッチ全体の継続性を優先する</li>
+</ul>
 <h2 id="画面遷移と終了制御">6. 画面遷移と終了制御</h2>
 <p><code>presenter/app_coordinator.py</code>
 が画面遷移の共通ルールを持ちます。</p>

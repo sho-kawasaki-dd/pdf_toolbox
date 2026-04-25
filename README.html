@@ -96,15 +96,16 @@
 <p>PDF を扱う日常作業をまとめて支援する Windows
 向けデスクトップアプリケーションです。 <code>main.py</code>
 から起動し、MVP（Model / View / Presenter）構成で実装されています。</p>
-<p>現在のバージョンは 1.0.3 です。</p>
-<h2 id="の更新内容">1.0.3 の更新内容</h2>
+<p>現在のバージョンは 1.1.0 です。</p>
+<h2 id="の更新内容">1.1.0 の更新内容</h2>
 <ul>
-<li>PDF 圧縮で、PDF 内の CMYK JPEG 画像を RGB
-へ正規化してから再圧縮するよう改善しました</li>
-<li>埋め込み ICC プロファイルを持つ CMYK
-画像では、その色情報を優先して変換します</li>
-<li>CMYK 画像を含む PDF
-圧縮の回帰テストを追加し、非可逆圧縮の安定性を強化しました</li>
+<li>PDF フラット化機能を追加し、注釈やフォーム widget を編集不能な通常
+PDF として書き出せるようにしました</li>
+<li>フォーム付き PDF と broken appearance 系 PDF を含む flatten
+回帰テストを追加し、<code>fitz.Document.bake()</code>
+周辺の安定性を固定しました</li>
+<li>flatten の presenter / view テストと利用者向け文書、設計書、HTML
+文書を更新しました</li>
 </ul>
 <h2 id="このアプリでできること">このアプリでできること</h2>
 <ul>
@@ -113,6 +114,8 @@
 <li>PDF 抽出: 複数 PDF から任意ページだけを集めて新しい PDF を作成</li>
 <li>PDF 圧縮: PDF / フォルダ / ZIP を対象にした一括圧縮</li>
 <li>PDF → JPEG: 単一 PDF の全ページを JPEG として書き出し</li>
+<li>PDFフラット化: 注釈やフォームを平坦化して
+<code>_flattened.pdf</code> として保存</li>
 </ul>
 <p>用語の違い:</p>
 <ul>
@@ -140,13 +143,14 @@ href="docs/release_note.md">docs/release_note.md</a></li>
 <li>最新の変更点を確認したい: <code>docs/release_note.md</code></li>
 </ul>
 <h2 id="ホーム画面の構成">ホーム画面の構成</h2>
-<p>起動後のホーム画面には、次の 5 つの機能カードが表示されます。</p>
+<p>起動後のホーム画面には、次の 6 つの機能カードが表示されます。</p>
 <ul>
 <li>PDF 分割</li>
 <li>PDF 結合</li>
 <li>PDF 抽出</li>
 <li>PDF 圧縮</li>
 <li>PDF → JPEG</li>
+<li>PDFフラット化</li>
 </ul>
 <p>起動時にはスプラッシュ画面が表示され、最小 2
 秒表示された後にメインウィンドウへ切り替わります。</p>
@@ -164,7 +168,7 @@ class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="
 <li><p>起動確認を行います。</p>
 <ul>
 <li>スプラッシュ画面が表示される</li>
-<li>ホーム画面に 5 つの機能カードが並ぶ</li>
+<li>ホーム画面に 6 つの機能カードが並ぶ</li>
 <li>各カードから対応する画面へ遷移できる</li>
 </ul></li>
 </ol>
@@ -210,6 +214,17 @@ class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="
 <li>保存先は <code>保存先/PDF名/</code> サブフォルダです</li>
 <li>透明要素を含むページは白背景に合成して保存します</li>
 </ul>
+<h3 id="pdfフラット化">PDFフラット化</h3>
+<ul>
+<li>入力として PDF とフォルダを受け付けます</li>
+<li>注釈、フォーム field、widget を <code>fitz.Document.bake()</code>
+で平坦化し、編集対象を残さない PDF を生成します</li>
+<li>出力ファイル名は元 PDF と同じ場所に <code>*_flattened.pdf</code>
+を付けて保存します</li>
+<li>既存の出力がある場合は一括上書き確認を行い、「いいえ」を選ぶと競合分だけスキップして続行します</li>
+<li>暗号化 PDF
+やロック中ファイルなど処理できない入力は失敗として集計し、他のジョブは継続します</li>
+</ul>
 <h2 id="windows-で実行ファイルを作成する">Windows
 で実行ファイルを作成する</h2>
 <ol type="1">
@@ -228,8 +243,8 @@ class="sourceCode powershell"><code class="sourceCode powershell"><span id="cb4-
 <li><p>動作確認を行います。</p>
 <ul>
 <li>ホーム画面が表示される</li>
-<li>5 機能へ遷移できる</li>
-<li>代表機能として、分割または PDF→JPEG を最後まで実行できる</li>
+<li>6 機能へ遷移できる</li>
+<li>代表機能として、分割または PDFフラット化 を最後まで実行できる</li>
 </ul></li>
 </ol>
 <p>補足:</p>
@@ -263,13 +278,23 @@ class="sourceCode powershell"><code class="sourceCode powershell"><span id="cb4-
 <ul>
 <li>実行中のジョブ保護のため、各 Presenter が遷移を制御しています</li>
 </ul></li>
+<li>暗号化された PDF が処理できない
+<ul>
+<li>現状では暗号化 PDF の flatten や変換は行いません</li>
+<li>パスワードを外した PDF を入力してください</li>
+</ul></li>
+<li>保存時に「他のアプリで開かれています」と出る
+<ul>
+<li>出力先 PDF がビューアやエクスプローラーのプレビューで使用中です</li>
+<li>対象ファイルを閉じてから再実行してください</li>
+</ul></li>
 <li>JPEG の背景が白になる
 <ul>
 <li>透明要素を含むページを白背景に合成して保存する仕様です</li>
 </ul></li>
 <li>PDF 圧縮後に画像の色が崩れるのが不安
 <ul>
-<li>1.0.3 では CMYK JPEG を RGB へ正規化してから圧縮するため、CMYK
+<li>1.0.3 以降では CMYK JPEG を RGB へ正規化してから圧縮するため、CMYK
 画像を含む PDF でも従来より安定して処理できます</li>
 </ul></li>
 </ul>

@@ -22,6 +22,7 @@ FEATURES: tuple[tuple[str, str, str, bool], ...] = (
     ("extract", "pdf_extraction_icon.png", "PDF 抽出", True),
     ("compress", "pdf_compressor_icon.png", "PDF 圧縮", True),
     ("pdf-to-jpeg", "pdf2jpeg_icon.png", "PDF → JPEG", True),
+    ("flatten", "pdf_flattener_icon.png", "PDFフラット化", True),
 )
 
 

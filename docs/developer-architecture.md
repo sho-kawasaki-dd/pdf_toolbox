@@ -217,6 +217,22 @@ View は表示とイベント通知だけを担います。
 - 出力先は常に `保存先/PDF名/`
 - 透明要素を含むページは白背景へ合成して JPEG 保存する
 
+### 5.6 PDFフラット化
+
+- Presenter: `presenter/flatten_presenter.py`
+- Model: `model/flatten/flatten_session.py`, `model/flatten/flatten_processor.py`
+- View: `view/flatten/*`
+
+主なポイント:
+
+- 入力は PDF とフォルダで、フォルダは再帰探索して `.pdf` のみを拾う
+- `FlattenSession` は入力一覧、進捗件数、出力命名規則、Windows path 制約判定を保持する
+- `FlattenProcessor.prepare_batch()` は探索、非 PDF / missing input の skip、既存出力との conflict 分離、出力パス長の preflight failure 化を担当する
+- `FlattenProcessor.start_flatten()` は worker thread を起動し、result queue へ success / failure / skipped / progress / finished / cancelled を順次積む
+- Presenter は `MainWindow.schedule()` を使って polling し、進捗文言、完了ダイアログ、cancel 後 close を制御する
+- 実際の平坦化責務は `fitz.Document.bake()` に寄せ、annotation と widget を通常ページ内容へ焼き込んだ後、テンポラリ保存から `os.replace()` で確定する
+- 失敗系として、invalid PDF、encrypted PDF、保存先 PermissionError、MAX_PATH 超過、broken appearance 系を failure / skip 集計へ落とし、バッチ全体の継続性を優先する
+
 ## 6. 画面遷移と終了制御
 
 `presenter/app_coordinator.py` が画面遷移の共通ルールを持ちます。
