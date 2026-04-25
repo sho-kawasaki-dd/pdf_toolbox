@@ -1,6 +1,6 @@
 <#
-    このスクリプトは、プロジェクトルート配下のうち .gitignore で無視されないファイルと、
-    例外的に必ず含める dist/ 配下のファイルをタイムスタンプ付き ZIP としてバックアップする。
+    このスクリプトは、プロジェクトルート配下のうち .gitignore で無視されないファイルを
+    タイムスタンプ付き ZIP としてバックアップする。
 
     無視判定は PowerShell 側で再実装せず、Git の `ls-files --exclude-standard` に委ねることで、
     `.gitignore`・`.git/info/exclude`・グローバル ignore を含む Git 標準の判定結果に合わせる。
@@ -15,7 +15,7 @@ $rootPath = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 # バックアップファイル名は作成日時を含め、連続実行しても重複しにくい命名にする。
 $timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
-$appName = 'pdf_toolbox_v1'
+$appName = 'pdf_toolbox_v1.1.0'
 $archiveName = "${appName}_$timestamp.zip"
 $archivePath = Join-Path $rootPath $archiveName
 
@@ -38,19 +38,8 @@ try {
         }
     }
 
-    # dist/ は .gitignore の対象でもバックアップへ含めたいので、ここで例外追加する。
-    # 相対パスへ変換して通常収集分と同じ形式にそろえる。
-    $distPath = Join-Path $rootPath 'dist'
-    if (Test-Path -LiteralPath $distPath -PathType Container) {
-        $distFiles = Get-ChildItem -LiteralPath $distPath -Recurse -File | ForEach-Object {
-            [System.IO.Path]::GetRelativePath($rootPath, $_.FullName)
-        }
-        foreach ($distFile in @($distFiles)) {
-            if (-not [string]::IsNullOrWhiteSpace($distFile)) {
-                [void]$files.Add([string]$distFile)
-            }
-        }
-    }
+    # ZIP には dist/ を含めないため、Git 収集分からもここで除外する。
+    $files = $files | Where-Object { $_ -and -not $_.StartsWith('dist/', [System.StringComparison]::OrdinalIgnoreCase) }
 
     if (-not $files -or $files.Count -eq 0) {
         throw 'バックアップ対象のファイルが見つかりませんでした。'
