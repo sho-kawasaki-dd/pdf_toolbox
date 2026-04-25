@@ -6,10 +6,40 @@ $ErrorActionPreference = 'Stop'
 
 $projectRoot = $PSScriptRoot
 $specPath = Join-Path $projectRoot 'pdf_toolbox.spec'
+$issPath = Join-Path $projectRoot 'pdf_toolbox.iss'
 $venvPython = Join-Path $projectRoot '.venv\Scripts\python.exe'
 
 if (-not (Test-Path $specPath)) {
     throw "Spec file not found: $specPath"
+}
+
+if (-not (Test-Path $issPath)) {
+    throw "Installer definition file not found: $issPath"
+}
+
+function Resolve-InnoSetupCompiler {
+    $compilerCommand = Get-Command iscc.exe -ErrorAction SilentlyContinue
+
+    if ($null -eq $compilerCommand) {
+        $compilerCommand = Get-Command iscc -ErrorAction SilentlyContinue
+    }
+
+    if ($null -ne $compilerCommand) {
+        return $compilerCommand.Source
+    }
+
+    $candidatePaths = @(
+        'C:\Program Files (x86)\Inno Setup 6\ISCC.exe',
+        'C:\Program Files\Inno Setup 6\ISCC.exe'
+    )
+
+    foreach ($candidatePath in $candidatePaths) {
+        if (Test-Path $candidatePath) {
+            return $candidatePath
+        }
+    }
+
+    return $null
 }
 
 Push-Location $projectRoot
@@ -31,10 +61,28 @@ try {
         throw 'PyInstaller was not found. Activate your virtual environment or install PyInstaller first.'
     }
 
+    $isccPath = Resolve-InnoSetupCompiler
+
+    if (-not $isccPath) {
+        throw 'Inno Setup Compiler was not found. Install Inno Setup or add ISCC.exe to PATH.'
+    }
+
+    Write-Host "Using Inno Setup Compiler: $isccPath"
+    & $isccPath $issPath
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "Inno Setup build failed with exit code $LASTEXITCODE"
+    }
+
     $distPath = Join-Path $projectRoot 'dist\PDFToolbox_v1.1.0'
+    $installerPath = Join-Path $projectRoot 'installer\PDF Toolbox_Setup_v1.1.0.exe'
 
     if (Test-Path $distPath) {
         Write-Host "Build completed: $distPath"
+    }
+
+    if (Test-Path $installerPath) {
+        Write-Host "Installer created: $installerPath"
     }
 }
 finally {
