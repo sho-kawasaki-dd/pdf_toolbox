@@ -21,3 +21,6 @@ wheels/
 
 # Installer
 installer/
+
+# Vendor libraries
+vendor/
