@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import MagicMock
 
 from PySide6.QtCore import QMimeData, QPointF, Qt, QUrl
 from PySide6.QtGui import QDropEvent
@@ -99,6 +100,57 @@ class TestCompressView:
         assert view.btn_add_pdf.isEnabled() is False
         assert view.btn_choose_output.isEnabled() is False
         assert view.cmb_mode.isEnabled() is False
+
+    def test_update_ui_disables_ghostscript_tab_and_shows_status(self, qtbot) -> None:
+        view = CompressionView()
+        qtbot.addWidget(view)
+
+        state = CompressionUiState(
+            ghostscript_available=False,
+            ghostscript_status_text="Ghostscript が見つからないため、このタブは無効です。",
+        )
+
+        view.update_ui(state)
+
+        ghostscript_index = view.settings_tabs.indexOf(view.tab_ghostscript)
+        assert view.settings_tabs.isTabEnabled(ghostscript_index) is False
+        assert view.lbl_ghostscript_status.isHidden() is False
+
+    def test_update_ui_controls_ghostscript_custom_dpi_enablement(self, qtbot) -> None:
+        view = CompressionView()
+        qtbot.addWidget(view)
+
+        view.update_ui(
+            CompressionUiState(
+                engine="ghostscript",
+                ghostscript_available=True,
+                ghostscript_preset="ebook",
+                ghostscript_custom_dpi_enabled=False,
+            ),
+        )
+        assert view.sld_ghostscript_dpi.isEnabled() is False
+
+        view.update_ui(
+            CompressionUiState(
+                engine="ghostscript",
+                ghostscript_available=True,
+                ghostscript_preset="custom",
+                ghostscript_custom_dpi_enabled=True,
+            ),
+        )
+        assert view.sld_ghostscript_dpi.isEnabled() is True
+
+    def test_switching_tabs_notifies_presenter_engine_selection(self, qtbot) -> None:
+        view = CompressionView()
+        qtbot.addWidget(view)
+        presenter = MagicMock()
+        view.set_presenter(presenter)
+
+        view.update_ui(CompressionUiState(ghostscript_available=True))
+        ghostscript_index = view.settings_tabs.indexOf(view.tab_ghostscript)
+        view.settings_tabs.setCurrentIndex(ghostscript_index)
+
+        presenter.set_engine.assert_called_with("ghostscript")
 
     def test_selected_input_paths_return_underlying_paths(self, qtbot) -> None:
         view = CompressionView()

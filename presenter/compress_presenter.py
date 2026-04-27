@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
 
 from model.compress.compression_processor import CompressionProcessor
 from model.compress.compression_session import CompressionSession
+from model.compress.settings import PDF_COMPRESSION_ENGINE_GHOSTSCRIPT, PDF_COMPRESSION_ENGINE_NATIVE
 from view.compress.compress_view import CompressionInputItem, CompressionUiState
 from view.main_window import MainWindow
 
@@ -89,6 +91,15 @@ class CompressionPresenter:
         self._session.set_mode(mode)
         self._refresh_ui()
 
+    def set_engine(self, engine: str) -> None:
+        """選択中の圧縮エンジンを更新する。"""
+        if engine == PDF_COMPRESSION_ENGINE_GHOSTSCRIPT and not self._session.ghostscript_available:
+            self._session.set_engine(PDF_COMPRESSION_ENGINE_NATIVE)
+            self._refresh_ui()
+            return
+        self._session.set_engine(engine)
+        self._refresh_ui()
+
     def set_jpeg_quality(self, quality: int) -> None:
         """JPEG 品質だけを即座に Session へ反映する。"""
         self._session.set_jpeg_quality(quality)
@@ -101,6 +112,20 @@ class CompressionPresenter:
         """非可逆圧縮時の目標 DPI を Session へ反映する。"""
         self._session.set_lossy_dpi(dpi)
 
+    def set_ghostscript_preset(self, preset: str) -> None:
+        """Ghostscript プリセット変更を Session へ反映する。"""
+        self._session.set_ghostscript_preset(preset)
+        self._refresh_ui()
+
+    def set_ghostscript_custom_dpi(self, dpi: int) -> None:
+        """Ghostscript カスタム DPI を Session へ反映する。"""
+        self._session.set_ghostscript_custom_dpi(dpi)
+
+    def set_ghostscript_postprocess_enabled(self, enabled: bool) -> None:
+        """Ghostscript 後段 pikepdf の有無を Session へ反映する。"""
+        self._session.set_ghostscript_postprocess_enabled(enabled)
+        self._refresh_ui()
+
     def set_lossless_option(self, key: str, value: bool) -> None:
         """可逆最適化オプションの単一項目を更新する。"""
         self._session.update_lossless_options(**{key: value})
@@ -110,8 +135,18 @@ class CompressionPresenter:
         if self._processor.is_compressing:
             return
 
+        previous_availability = self._session.ghostscript_available
+        self._session.refresh_external_tool_state()
+        if previous_availability != self._session.ghostscript_available and not self._session.ghostscript_available:
+            self._session.set_engine(PDF_COMPRESSION_ENGINE_NATIVE)
+        self._refresh_ui()
+
         if not self._session.input_paths:
             self._view.show_error("入力不足", "圧縮対象のPDF / フォルダ / ZIPを追加してください。")
+            return
+
+        if self._session.engine == PDF_COMPRESSION_ENGINE_GHOSTSCRIPT and not self._session.ghostscript_available:
+            self._view.show_error("Ghostscript未検出", "Ghostscript が見つからないため、このエンジンは実行できません。")
             return
 
         if self._session.output_dir is None:
@@ -264,9 +299,9 @@ class CompressionPresenter:
         total_lossy = 0
         total_final = 0
         for success in self._recent_successes:
-            total_input += int(success.get("input_bytes", 0))
-            total_lossy += int(success.get("lossy_output_bytes", 0))
-            total_final += int(success.get("final_output_bytes", 0))
+            total_input += self._coerce_int(success.get("input_bytes", 0))
+            total_lossy += self._coerce_int(success.get("lossy_output_bytes", 0))
+            total_final += self._coerce_int(success.get("final_output_bytes", 0))
 
         if total_input <= 0:
             return [
@@ -297,6 +332,16 @@ class CompressionPresenter:
             value /= 1024
             unit_index += 1
         return f"{value:.1f} {units[unit_index]}"
+
+    def _coerce_int(self, value: object) -> int:
+        if isinstance(value, int):
+            return value
+        if isinstance(value, str):
+            try:
+                return int(value)
+            except ValueError:
+                return 0
+        return int(cast(int, 0))
 
     def _refresh_ui(self) -> None:
         """現在の Session/Processor 状態から View 全体を再描画する。"""
@@ -335,24 +380,44 @@ class CompressionPresenter:
             progress_text=progress_text,
             summary_text=summary_text,
             progress_value=progress_value,
+            engine=self._session.engine,
             mode=self._session.mode,
             jpeg_quality=self._session.jpeg_quality,
             png_quality=self._session.png_quality,
             dpi=self._session.lossy_dpi,
+            ghostscript_available=self._session.ghostscript_available,
+            ghostscript_status_text=self._build_ghostscript_status_text(),
+            ghostscript_preset=self._session.ghostscript_preset,
+            ghostscript_custom_dpi=self._session.ghostscript_custom_dpi,
+            ghostscript_postprocess=self._session.ghostscript_use_pikepdf_postprocess,
             linearize=self._session.lossless_options["linearize"],
             object_streams=self._session.lossless_options["object_streams"],
             recompress_streams=self._session.lossless_options["recompress_streams"],
             remove_unreferenced=self._session.lossless_options["remove_unreferenced"],
             clean_metadata=self._session.lossless_options["clean_metadata"],
+            native_lossy_controls_enabled=self._session.mode in {"lossy", "both"},
+            native_lossless_controls_enabled=self._session.mode in {"lossless", "both"},
+            ghostscript_custom_dpi_enabled=self._session.ghostscript_uses_custom_dpi,
+            ghostscript_lossless_controls_enabled=self._session.ghostscript_use_pikepdf_postprocess,
             can_add_inputs=not is_running,
             can_remove_selected=bool(self._session.input_paths) and not is_running,
             can_clear_inputs=bool(self._session.input_paths) and not is_running,
             can_choose_output=not is_running,
-            can_execute=bool(self._session.input_paths) and self._session.output_dir is not None and not is_running,
+            can_execute=(
+                bool(self._session.input_paths)
+                and self._session.output_dir is not None
+                and not is_running
+                and (self._session.engine != PDF_COMPRESSION_ENGINE_GHOSTSCRIPT or self._session.ghostscript_available)
+            ),
             can_edit_settings=not is_running,
             can_back_home=True,
             is_running=is_running,
         )
+
+    def _build_ghostscript_status_text(self) -> str:
+        if self._session.ghostscript_available:
+            return ""
+        return "Ghostscript が見つからないため、このタブは無効です。Windows レジストリ、PATH、同梱バイナリの順で探索します。"
 
     def _rebuild_input_items_cache(self) -> None:
         """入力一覧が変わった時だけ表示用ラベルを再構築する。"""

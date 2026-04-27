@@ -157,3 +157,68 @@ class TestCompressionPresenter:
 
         view.cancel_schedule.assert_called_once_with("timer_1")
         view.destroy_window.assert_called_once()
+
+    def test_ghostscript_unavailable_disables_tab_state(self, monkeypatch) -> None:
+        monkeypatch.setattr("model.compress.compression_session.is_ghostscript_available", lambda: False)
+        view = _make_mock_view()
+
+        CompressionPresenter(view)
+
+        state = view.update_compression_ui.call_args[0][0]
+        assert state.ghostscript_available is False
+        assert state.engine == "native"
+        assert "Ghostscript が見つからない" in state.ghostscript_status_text
+
+    def test_set_engine_ignores_unavailable_ghostscript(self, monkeypatch) -> None:
+        monkeypatch.setattr("model.compress.compression_session.is_ghostscript_available", lambda: False)
+        view = _make_mock_view()
+        presenter = CompressionPresenter(view)
+        view.reset_mock()
+
+        presenter.set_engine("ghostscript")
+
+        state = view.update_compression_ui.call_args[0][0]
+        assert state.engine == "native"
+
+    def test_ghostscript_preset_controls_custom_dpi_state(self, monkeypatch) -> None:
+        monkeypatch.setattr("model.compress.compression_session.is_ghostscript_available", lambda: True)
+        view = _make_mock_view()
+        presenter = CompressionPresenter(view)
+
+        presenter.set_engine("ghostscript")
+        presenter.set_ghostscript_preset("ebook")
+        state = view.update_compression_ui.call_args[0][0]
+        assert state.engine == "ghostscript"
+        assert state.ghostscript_custom_dpi_enabled is False
+
+        presenter.set_ghostscript_preset("custom")
+        state = view.update_compression_ui.call_args[0][0]
+        assert state.ghostscript_custom_dpi_enabled is True
+
+    def test_ghostscript_postprocess_controls_lossless_options_state(self, monkeypatch) -> None:
+        monkeypatch.setattr("model.compress.compression_session.is_ghostscript_available", lambda: True)
+        view = _make_mock_view()
+        presenter = CompressionPresenter(view)
+
+        presenter.set_engine("ghostscript")
+        presenter.set_ghostscript_postprocess_enabled(False)
+        state = view.update_compression_ui.call_args[0][0]
+        assert state.ghostscript_lossless_controls_enabled is False
+
+        presenter.set_ghostscript_postprocess_enabled(True)
+        state = view.update_compression_ui.call_args[0][0]
+        assert state.ghostscript_lossless_controls_enabled is True
+
+    def test_execute_compression_rejects_unavailable_ghostscript(self, sample_pdf: Path, tmp_path: Path, monkeypatch) -> None:
+        monkeypatch.setattr("model.compress.compression_session.is_ghostscript_available", lambda: False)
+        view = _make_mock_view()
+        presenter = CompressionPresenter(view)
+        presenter._session.add_input(str(sample_pdf))
+        presenter._session.set_output_dir(str(tmp_path / "out"))
+        presenter._session.set_engine("native")
+        presenter._session.engine = "ghostscript"
+
+        presenter.execute_compression()
+
+        view.show_error.assert_called_once()
+        assert "Ghostscript" in view.show_error.call_args[0][0]
