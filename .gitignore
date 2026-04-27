@@ -11,7 +11,7 @@ wheels/
 .venv/
 
 # github
-.github/
+# .github/
 
 # ZIP files
 *.zip
