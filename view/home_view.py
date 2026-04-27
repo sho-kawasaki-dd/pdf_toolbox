@@ -12,8 +12,8 @@ from PySide6.QtWidgets import QGridLayout, QLabel, QSizePolicy, QToolButton, QVB
 from view.font_config import make_app_font
 
 
-FEATURE_CARD_ICON_SIZE = 156
-FEATURE_CARD_MIN_WIDTH = 250
+FEATURE_CARD_ICON_SIZE = 128
+FEATURE_CARD_MIN_WIDTH = 180
 MASCOT_IMAGE_NAME = "pdf_manipulator_icon.png"
 
 FEATURES: tuple[tuple[str, str, str, bool], ...] = (
@@ -48,7 +48,7 @@ class FeatureCardButton(QToolButton):
         return True
 
     def heightForWidth(self, width: int) -> int:
-        return max(280, int(width * 1.12))
+        return max(180, int(width * 1.00))
 
     def sizeHint(self):
         width = max(FEATURE_CARD_MIN_WIDTH, super().sizeHint().width())
@@ -89,7 +89,7 @@ class MascotCard(QWidget):
         return True
 
     def heightForWidth(self, width: int) -> int:
-        return max(280, int(width * 1.12))
+        return max(200, int(width * 1.00))
 
     def sizeHint(self):
         width = max(FEATURE_CARD_MIN_WIDTH, super().sizeHint().width())
@@ -158,7 +158,9 @@ class HomeView(QWidget):
             self._add_card(grid, row, column, feature, icon_name, title, enabled)
 
         mascot_index = len(FEATURES)
-        mascot_row, mascot_column = divmod(mascot_index, 3)
+        # mascot_row, mascot_column = divmod(mascot_index, 3)
+        mascot_row = mascot_index // 3
+        mascot_column = 2 # 常に右下に配置
         self._add_mascot_card(grid, mascot_row, mascot_column)
 
     def _add_card(
@@ -185,7 +187,7 @@ class HomeView(QWidget):
             " background-color: #f8fafc;"
             " border: 1px solid #cbd5e1;"
             " border-radius: 14px;"
-            " padding: 18px 14px 20px 14px;"
+            " padding: 10px 8px 12px 8px;"
             " color: #0f172a;"
             " qproperty-toolButtonStyle: ToolButtonTextUnderIcon;"
             "}"
