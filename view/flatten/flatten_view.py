@@ -14,10 +14,13 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QProgressBar,
     QPushButton,
+    QCheckBox,
+    QComboBox,
     QVBoxLayout,
     QWidget,
 )
 
+from model.compress.settings import PDF_GHOSTSCRIPT_PRESET_DEFAULT
 from view.font_config import make_app_font
 
 
@@ -37,11 +40,18 @@ class FlattenUiState:
     progress_text: str = "待機中"
     summary_text: str = "成功: 0件 / 失敗: 0件 / スキップ: 0件"
     progress_value: int = 0
+    post_compression_enabled: bool = False
+    ghostscript_preset: str = PDF_GHOSTSCRIPT_PRESET_DEFAULT
+    post_compression_use_pikepdf: bool = False
+    ghostscript_available: bool = False
+    ghostscript_status_text: str = ""
     can_add_inputs: bool = True
     can_remove_selected: bool = False
     can_clear_inputs: bool = False
     can_execute: bool = False
     can_back_home: bool = True
+    can_edit_post_compression: bool = True
+    can_edit_post_compression_details: bool = False
     is_running: bool = False
 
 
@@ -154,7 +164,7 @@ class FlattenView(QWidget):
         self.input_list.setObjectName("flatten_input_list")
         self.input_list.itemSelectionChanged.connect(self._update_selection_buttons)
         input_layout.addWidget(self.input_list, stretch=1)
-        body.addWidget(self.input_group, 0, 0)
+        body.addWidget(self.input_group, 0, 0, 2, 1)
 
         self.progress_group = QGroupBox("進捗")
         progress_layout = QVBoxLayout(self.progress_group)
@@ -184,6 +194,33 @@ class FlattenView(QWidget):
         progress_layout.addStretch(1)
         body.addWidget(self.progress_group, 0, 1)
 
+        self.postprocess_group = QGroupBox("後処理")
+        postprocess_layout = QVBoxLayout(self.postprocess_group)
+        postprocess_layout.setSpacing(10)
+
+        self.chk_post_compression = QCheckBox("フラット化後に Ghostscript 圧縮を実行")
+        postprocess_layout.addWidget(self.chk_post_compression)
+
+        self.cmb_ghostscript_preset = QComboBox()
+        self.cmb_ghostscript_preset.addItem("画面向け (screen)", "screen")
+        self.cmb_ghostscript_preset.addItem("電子文書向け (ebook)", "ebook")
+        self.cmb_ghostscript_preset.addItem("印刷向け (printer)", "printer")
+        self.cmb_ghostscript_preset.addItem("プリプレス向け (prepress)", "prepress")
+        self.cmb_ghostscript_preset.addItem("標準設定 (default)", "default")
+        postprocess_layout.addWidget(QLabel("Ghostscript プリセット"))
+        postprocess_layout.addWidget(self.cmb_ghostscript_preset)
+
+        self.chk_postprocess_pikepdf = QCheckBox("Ghostscript 後に pikepdf 既定最適化を実行")
+        postprocess_layout.addWidget(self.chk_postprocess_pikepdf)
+
+        self.lbl_ghostscript_status = QLabel("")
+        self.lbl_ghostscript_status.setWordWrap(True)
+        self.lbl_ghostscript_status.setStyleSheet("color: #7c2d12;")
+        self.lbl_ghostscript_status.hide()
+        postprocess_layout.addWidget(self.lbl_ghostscript_status)
+        postprocess_layout.addStretch(1)
+        body.addWidget(self.postprocess_group, 1, 1)
+
     def set_presenter(self, presenter: Any) -> None:
         self.btn_add_pdf.clicked.connect(presenter.add_pdf_files)
         self.btn_add_folder.clicked.connect(presenter.add_folder)
@@ -191,6 +228,11 @@ class FlattenView(QWidget):
         self.btn_clear.clicked.connect(presenter.clear_inputs)
         self.btn_execute.clicked.connect(presenter.execute_flatten)
         self.input_list.paths_dropped.connect(presenter.handle_dropped_paths)
+        self.chk_post_compression.toggled.connect(presenter.set_post_compression_enabled)
+        self.cmb_ghostscript_preset.currentIndexChanged.connect(
+            lambda _index: presenter.set_ghostscript_preset(self.cmb_ghostscript_preset.currentData()),
+        )
+        self.chk_postprocess_pikepdf.toggled.connect(presenter.set_post_compression_use_pikepdf)
 
     def update_ui(self, state: FlattenUiState) -> None:
         self.input_list.clear()
@@ -202,6 +244,11 @@ class FlattenView(QWidget):
         self.progress_bar.setValue(state.progress_value)
         self.lbl_progress.setText(state.progress_text)
         self.lbl_summary.setText(state.summary_text)
+        self._apply_checkbox(self.chk_post_compression, state.post_compression_enabled)
+        self._apply_combo_value(self.cmb_ghostscript_preset, state.ghostscript_preset)
+        self._apply_checkbox(self.chk_postprocess_pikepdf, state.post_compression_use_pikepdf)
+        self.lbl_ghostscript_status.setText(state.ghostscript_status_text)
+        self.lbl_ghostscript_status.setVisible(bool(state.ghostscript_status_text))
 
         self._can_remove_selected = state.can_remove_selected
         self.btn_add_pdf.setEnabled(state.can_add_inputs)
@@ -210,6 +257,9 @@ class FlattenView(QWidget):
         self.btn_execute.setEnabled(state.can_execute)
         self.btn_back_home.setEnabled(state.can_back_home)
         self.input_list.setAcceptDrops(not state.is_running)
+        self.chk_post_compression.setEnabled(state.can_edit_post_compression and state.ghostscript_available)
+        self.cmb_ghostscript_preset.setEnabled(state.can_edit_post_compression_details)
+        self.chk_postprocess_pikepdf.setEnabled(state.can_edit_post_compression_details)
 
         self._update_selection_buttons()
 
@@ -219,3 +269,18 @@ class FlattenView(QWidget):
     def _update_selection_buttons(self) -> None:
         has_selection = bool(self.input_list.selectedItems())
         self.btn_remove_selected.setEnabled(self._can_remove_selected and has_selection)
+
+    def _apply_checkbox(self, checkbox: QCheckBox, value: bool) -> None:
+        if checkbox.isChecked() == value:
+            return
+        blocked = checkbox.blockSignals(True)
+        checkbox.setChecked(value)
+        checkbox.blockSignals(blocked)
+
+    def _apply_combo_value(self, combo: QComboBox, value: str) -> None:
+        index = combo.findData(value)
+        if index < 0 or index == combo.currentIndex():
+            return
+        blocked = combo.blockSignals(True)
+        combo.setCurrentIndex(index)
+        combo.blockSignals(blocked)

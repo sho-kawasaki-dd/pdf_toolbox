@@ -29,9 +29,11 @@ class FlattenPresenter:
         self._status = "idle"
         self._last_error_message: str | None = None
         self._recent_failures: list[dict[str, object]] = []
+        self._recent_warnings: list[dict[str, object]] = []
         self._recent_skips: list[dict[str, object]] = []
         self._input_items_cache: list[FlattenInputItem] = []
 
+        self._session.refresh_external_tool_state()
         self._view.set_flatten_presenter(self)
         self._refresh_ui()
 
@@ -72,6 +74,23 @@ class FlattenPresenter:
         self._input_items_cache = []
         self._refresh_ui()
 
+    def set_post_compression_enabled(self, enabled: bool) -> None:
+        self._session.refresh_external_tool_state()
+        if enabled and not self._session.ghostscript_available:
+            self._view.show_error("Ghostscript未検出", "Ghostscript が見つからないため、後処理圧縮は有効化できません。")
+            self._session.set_post_compression_enabled(False)
+        else:
+            self._session.set_post_compression_enabled(enabled)
+        self._refresh_ui()
+
+    def set_ghostscript_preset(self, preset: str) -> None:
+        self._session.set_ghostscript_preset(preset)
+        self._refresh_ui()
+
+    def set_post_compression_use_pikepdf(self, enabled: bool) -> None:
+        self._session.set_post_compression_use_pikepdf(enabled)
+        self._refresh_ui()
+
     def execute_flatten(self) -> None:
         if self._processor.is_running:
             return
@@ -79,6 +98,8 @@ class FlattenPresenter:
         if not self._session.input_paths:
             self._view.show_error("入力不足", "フラット化対象のPDFまたはフォルダを追加してください。")
             return
+
+        self._session.refresh_external_tool_state()
 
         initial_plan = self._processor.prepare_batch(self._session)
         resolved_plan = self._resolve_plan(initial_plan)
@@ -88,6 +109,7 @@ class FlattenPresenter:
 
         self._session.begin_batch(0)
         self._recent_failures.clear()
+        self._recent_warnings.clear()
         self._recent_skips.clear()
         self._close_after_cancel = False
         self._status = "running"
@@ -161,6 +183,8 @@ class FlattenPresenter:
             result_type = result.get("type")
             if result_type == "failure" and result.get("item") is None:
                 top_level_failure = result
+            elif result_type == "warning":
+                self._recent_warnings.append(result)
             elif result_type == "failure":
                 self._recent_failures.append(result)
             elif result_type == "skipped":
@@ -204,15 +228,29 @@ class FlattenPresenter:
         if finished_result is not None:
             self._status = "finished"
             self._refresh_ui()
-            self._view.show_info("フラット化完了", self._build_completion_message(finished_result))
+            self._view.show_info(self._build_completion_title(), self._build_completion_message(finished_result))
+
+    def _build_completion_title(self) -> str:
+        if self._recent_warnings:
+            return "フラット化完了（圧縮は一部スキップされました）"
+        return "フラット化完了"
 
     def _build_completion_message(self, result: dict[str, object]) -> str:
         lines = [
             "PDFフラット化が完了しました。",
             f"成功: {result.get('success_count', 0)}件",
+            f"警告: {result.get('warning_count', 0)}件",
             f"失敗: {result.get('failure_count', 0)}件",
             f"スキップ: {result.get('skip_count', 0)}件",
         ]
+
+        if self._recent_warnings:
+            lines.append("")
+            lines.append("圧縮スキップ例:")
+            for warning in self._recent_warnings[:3]:
+                lines.append(
+                    f"- {warning.get('item', 'unknown')}: {warning.get('message', 'warning')}",
+                )
 
         if self._recent_failures:
             lines.append("")
@@ -250,6 +288,7 @@ class FlattenPresenter:
 
         summary_text = (
             f"成功: {self._session.success_count}件 / "
+            f"警告: {self._session.warning_count}件 / "
             f"失敗: {self._session.failure_count}件 / "
             f"スキップ: {self._session.skip_count}件"
         )
@@ -259,13 +298,29 @@ class FlattenPresenter:
             progress_text=progress_text,
             summary_text=summary_text,
             progress_value=progress_value,
+            post_compression_enabled=self._session.post_compression_enabled,
+            ghostscript_preset=self._session.ghostscript_preset,
+            post_compression_use_pikepdf=self._session.post_compression_use_pikepdf,
+            ghostscript_available=self._session.ghostscript_available,
+            ghostscript_status_text=self._build_ghostscript_status_text(),
             can_add_inputs=not is_running,
             can_remove_selected=bool(self._session.input_paths) and not is_running,
             can_clear_inputs=bool(self._session.input_paths) and not is_running,
             can_execute=bool(self._session.input_paths) and not is_running,
             can_back_home=not is_running,
+            can_edit_post_compression=not is_running,
+            can_edit_post_compression_details=(
+                not is_running
+                and self._session.post_compression_enabled
+                and self._session.ghostscript_available
+            ),
             is_running=is_running,
         )
+
+    def _build_ghostscript_status_text(self) -> str:
+        if self._session.ghostscript_available:
+            return ""
+        return "Ghostscript が見つからないため、フラット化後の圧縮は利用できません。Windows レジストリ、PATH、同梱バイナリの順で探索します。"
 
     def _refresh_ui(self) -> None:
         self._view.update_flatten_ui(self._build_ui_state())

@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock
 
+from model.compress.settings import PDF_GHOSTSCRIPT_PRESET_PRINTER
 from model.flatten.flatten_session import FlattenBatchPlan, FlattenConflict, FlattenJob
 from presenter.flatten_presenter import FlattenPresenter
 
@@ -29,6 +30,33 @@ class TestFlattenPresenter:
         assert state.can_execute is False
         assert state.can_clear_inputs is False
         assert state.can_back_home is True
+
+    def test_unavailable_ghostscript_disables_post_compression_controls(self, monkeypatch) -> None:
+        monkeypatch.setattr("model.flatten.flatten_session.is_ghostscript_available", lambda: False)
+        view = _make_mock_view()
+
+        FlattenPresenter(view)
+
+        state = view.update_flatten_ui.call_args[0][0]
+        assert state.ghostscript_available is False
+        assert state.post_compression_enabled is False
+        assert "Ghostscript が見つからない" in state.ghostscript_status_text
+
+    def test_post_compression_settings_propagate_to_ui(self, monkeypatch) -> None:
+        monkeypatch.setattr("model.flatten.flatten_session.is_ghostscript_available", lambda: True)
+        view = _make_mock_view()
+        presenter = FlattenPresenter(view)
+        view.reset_mock()
+
+        presenter.set_post_compression_enabled(True)
+        presenter.set_ghostscript_preset(PDF_GHOSTSCRIPT_PRESET_PRINTER)
+        presenter.set_post_compression_use_pikepdf(True)
+
+        state = view.update_flatten_ui.call_args[0][0]
+        assert state.post_compression_enabled is True
+        assert state.ghostscript_preset == PDF_GHOSTSCRIPT_PRESET_PRINTER
+        assert state.post_compression_use_pikepdf is True
+        assert state.can_edit_post_compression_details is True
 
     def test_add_pdf_files_updates_input_list(self, sample_pdf: Path) -> None:
         view = _make_mock_view()
@@ -236,6 +264,27 @@ class TestFlattenPresenter:
         assert "成功: 2件" in message
         assert "失敗例:" in message
         assert "スキップ例:" in message
+
+    def test_poll_results_shows_partial_success_message(self) -> None:
+        view = _make_mock_view()
+        presenter = FlattenPresenter(view)
+        presenter._processor.is_running = False
+        presenter._processor.poll_results = MagicMock(return_value=[
+            {
+                "type": "warning",
+                "item": "sample.pdf",
+                "message": "フラット化完了（圧縮はスキップされました）: Ghostscript compression failed",
+            },
+            {"type": "finished", "success_count": 0, "warning_count": 1, "failure_count": 0, "skip_count": 0},
+        ])
+
+        presenter._poll_flatten_results()
+
+        view.show_info.assert_called_once()
+        assert view.show_info.call_args[0][0] == "フラット化完了（圧縮は一部スキップされました）"
+        message = view.show_info.call_args[0][1]
+        assert "警告: 1件" in message
+        assert "圧縮スキップ例:" in message
 
     def test_on_closing_requests_cancel_while_busy(self) -> None:
         view = _make_mock_view()

@@ -10,6 +10,8 @@ from pathlib import Path
 
 import fitz
 
+from model.compress.ghostscript_compressor import compress_pdf_with_ghostscript
+from model.compress.settings import PDF_GHOSTSCRIPT_CUSTOM_DPI_DEFAULT
 from model.flatten.flatten_session import (
     PREVIEW_TEMP_TOKEN,
     FlattenBatchPlan,
@@ -134,6 +136,21 @@ class FlattenProcessor:
             })
             return
 
+        if session.post_compression_enabled:
+            compressed_temp_output_path = session.build_post_compression_temp_output_path(
+                output_path,
+                PREVIEW_TEMP_TOKEN,
+            )
+            try:
+                session.validate_windows_path_limit(compressed_temp_output_path)
+            except ValueError:
+                plan.preflight_issues.append({
+                    "type": "failure",
+                    "item": str(path),
+                    "message": f"圧縮一時出力パスが長すぎるため処理できません: {compressed_temp_output_path}",
+                })
+                return
+
         if Path(output_path).exists():
             plan.conflicts.append(
                 FlattenConflict(source_path=str(path), output_path=output_path)
@@ -168,6 +185,8 @@ class FlattenProcessor:
                 result_type = result.get("type")
                 if result_type == "success":
                     session.record_success()
+                elif result_type == "warning":
+                    session.record_warning()
                 elif result_type == "skipped":
                     session.record_skip()
                 else:
@@ -200,12 +219,17 @@ class FlattenProcessor:
     ) -> dict[str, object]:
         output_path = Path(job.output_path)
         temp_output = Path(session.build_temp_output_path(job.output_path, uuid.uuid4().hex))
+        compressed_temp_output = Path(
+            session.build_post_compression_temp_output_path(job.output_path, uuid.uuid4().hex),
+        )
         source_path = Path(job.candidate.source_path)
         document: fitz.Document | None = None
 
         try:
             session.validate_windows_path_limit(str(output_path))
             session.validate_windows_path_limit(str(temp_output))
+            if session.post_compression_enabled:
+                session.validate_windows_path_limit(str(compressed_temp_output))
 
             if output_path.exists() and not job.allow_overwrite:
                 return {
@@ -221,6 +245,16 @@ class FlattenProcessor:
             self._raise_if_cancelled()
             self._save_flattened_pdf(document, temp_output)
             self._raise_if_cancelled()
+
+            if session.post_compression_enabled:
+                return self._run_post_compression(
+                    session=session,
+                    job=job,
+                    flattened_temp_output=temp_output,
+                    compressed_temp_output=compressed_temp_output,
+                    final_output_path=output_path,
+                )
+
             os.replace(temp_output, output_path)
             return {
                 "type": "success",
@@ -229,9 +263,11 @@ class FlattenProcessor:
             }
         except FlattenCancelledError:
             self._cleanup_temp_output(temp_output)
+            self._cleanup_temp_output(compressed_temp_output)
             raise
         except PermissionError:
             self._cleanup_temp_output(temp_output)
+            self._cleanup_temp_output(compressed_temp_output)
             return {
                 "type": "failure",
                 "item": job.candidate.source_label,
@@ -239,6 +275,7 @@ class FlattenProcessor:
             }
         except OSError as exc:
             self._cleanup_temp_output(temp_output)
+            self._cleanup_temp_output(compressed_temp_output)
             return {
                 "type": "failure",
                 "item": job.candidate.source_label,
@@ -246,6 +283,7 @@ class FlattenProcessor:
             }
         except ValueError as exc:
             self._cleanup_temp_output(temp_output)
+            self._cleanup_temp_output(compressed_temp_output)
             return {
                 "type": "failure",
                 "item": job.candidate.source_label,
@@ -253,6 +291,7 @@ class FlattenProcessor:
             }
         except Exception as exc:
             self._cleanup_temp_output(temp_output)
+            self._cleanup_temp_output(compressed_temp_output)
             return {
                 "type": "failure",
                 "item": job.candidate.source_label,
@@ -288,6 +327,45 @@ class FlattenProcessor:
 
     def _save_flattened_pdf(self, document: fitz.Document, temp_output: Path) -> None:
         document.save(str(temp_output), garbage=3, deflate=True)
+
+    def _run_post_compression(
+        self,
+        *,
+        session: FlattenSession,
+        job: FlattenJob,
+        flattened_temp_output: Path,
+        compressed_temp_output: Path,
+        final_output_path: Path,
+    ) -> dict[str, object]:
+        compression_ok, compression_message, _compression_metrics = compress_pdf_with_ghostscript(
+            flattened_temp_output,
+            compressed_temp_output,
+            preset=session.ghostscript_preset,
+            custom_dpi=PDF_GHOSTSCRIPT_CUSTOM_DPI_DEFAULT,
+            run_lossless_postprocess=session.post_compression_use_pikepdf,
+            lossless_options=session.build_post_compression_lossless_options(),
+        )
+
+        self._raise_if_cancelled()
+
+        if compression_ok:
+            os.replace(compressed_temp_output, final_output_path)
+            self._cleanup_temp_output(flattened_temp_output)
+            return {
+                "type": "success",
+                "item": job.candidate.source_label,
+                "output_path": str(final_output_path),
+                "message": compression_message,
+            }
+
+        self._cleanup_temp_output(compressed_temp_output)
+        os.replace(flattened_temp_output, final_output_path)
+        return {
+            "type": "warning",
+            "item": job.candidate.source_label,
+            "output_path": str(final_output_path),
+            "message": f"フラット化完了（圧縮はスキップされました）: {compression_message}",
+        }
 
     def _raise_if_cancelled(self) -> None:
         if self._cancel_event.is_set():

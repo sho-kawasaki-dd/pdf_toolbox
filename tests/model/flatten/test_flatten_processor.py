@@ -7,6 +7,7 @@ from pathlib import Path
 
 import fitz
 
+from model.compress.settings import PDF_GHOSTSCRIPT_PRESET_SCREEN
 from model.flatten.flatten_processor import FlattenProcessor
 from model.flatten.flatten_session import FlattenBatchPlan, FlattenJob, FlattenSession
 
@@ -305,3 +306,138 @@ def test_temp_file_is_cleaned_when_save_fails(sample_pdf: Path, monkeypatch) -> 
     assert len(failures) == 1
     assert "保存に失敗しました" in str(failures[0]["message"])
     assert not list(sample_pdf.parent.glob("*.flattening-*.pdf"))
+
+
+def test_start_flatten_runs_post_compression_and_publishes_compressed_output(sample_pdf: Path, monkeypatch) -> None:
+    session = FlattenSession()
+    session.add_input(str(sample_pdf))
+    session.set_post_compression_enabled(True)
+    session.set_ghostscript_preset(PDF_GHOSTSCRIPT_PRESET_SCREEN)
+    session.set_post_compression_use_pikepdf(True)
+
+    processor = FlattenProcessor()
+    plan = processor.prepare_batch(session)
+
+    captured_calls: list[tuple[Path, Path, str, bool, dict[str, bool]]] = []
+
+    def fake_compress(
+        input_path,
+        output_path,
+        *,
+        preset,
+        custom_dpi,
+        run_lossless_postprocess,
+        lossless_options,
+    ):
+        captured_calls.append(
+            (
+                Path(input_path),
+                Path(output_path),
+                preset,
+                run_lossless_postprocess,
+                dict(lossless_options or {}),
+            ),
+        )
+        Path(output_path).write_bytes(b"compressed")
+        return True, "compressed", None
+
+    monkeypatch.setattr("model.flatten.flatten_processor.compress_pdf_with_ghostscript", fake_compress)
+
+    processor.start_flatten(session, plan)
+    _wait_for_completion(processor)
+    results = processor.poll_results()
+
+    successes = [result for result in results if result["type"] == "success"]
+    finished = [result for result in results if result["type"] == "finished"]
+
+    assert len(successes) == 1
+    assert finished[0]["success_count"] == 1
+    assert finished[0]["warning_count"] == 0
+    assert captured_calls[0][0].name.endswith(".pdf")
+    assert ".flattening-" in captured_calls[0][0].name
+    assert ".flatten-compress-" in captured_calls[0][1].name
+    assert captured_calls[0][2] == PDF_GHOSTSCRIPT_PRESET_SCREEN
+    assert captured_calls[0][3] is True
+    assert captured_calls[0][4]["linearize"] is True
+
+    output_path = Path(plan.jobs[0].output_path)
+    assert output_path.read_bytes() == b"compressed"
+    assert not list(sample_pdf.parent.glob("*.flattening-*.pdf"))
+    assert not list(sample_pdf.parent.glob("*.flatten-compress-*.pdf"))
+
+
+def test_start_flatten_publishes_flattened_output_when_post_compression_fails(sample_pdf: Path, monkeypatch) -> None:
+    session = FlattenSession()
+    session.add_input(str(sample_pdf))
+    session.set_post_compression_enabled(True)
+
+    processor = FlattenProcessor()
+    plan = processor.prepare_batch(session)
+
+    def fake_compress(
+        _input_path,
+        output_path,
+        *,
+        preset,
+        custom_dpi,
+        run_lossless_postprocess,
+        lossless_options,
+    ):
+        Path(output_path).write_bytes(b"partial-compressed")
+        return False, "Ghostscript compression failed: missing executable", None
+
+    monkeypatch.setattr("model.flatten.flatten_processor.compress_pdf_with_ghostscript", fake_compress)
+
+    processor.start_flatten(session, plan)
+    _wait_for_completion(processor)
+    results = processor.poll_results()
+
+    warnings = [result for result in results if result["type"] == "warning"]
+    finished = [result for result in results if result["type"] == "finished"]
+
+    assert len(warnings) == 1
+    assert "圧縮はスキップされました" in str(warnings[0]["message"])
+    assert finished[0]["success_count"] == 0
+    assert finished[0]["warning_count"] == 1
+
+    output_path = Path(plan.jobs[0].output_path)
+    with fitz.open(str(sample_pdf)) as source_doc:
+        expected_page_count = source_doc.page_count
+    with fitz.open(str(output_path)) as flattened:
+        assert flattened.page_count == expected_page_count
+    assert not list(sample_pdf.parent.glob("*.flattening-*.pdf"))
+    assert not list(sample_pdf.parent.glob("*.flatten-compress-*.pdf"))
+
+
+def test_cancel_after_post_compression_cleans_temp_and_does_not_publish_output(sample_pdf: Path, monkeypatch) -> None:
+    session = FlattenSession()
+    session.add_input(str(sample_pdf))
+    session.set_post_compression_enabled(True)
+
+    processor = FlattenProcessor()
+    plan = processor.prepare_batch(session)
+
+    def fake_compress(
+        _input_path,
+        output_path,
+        *,
+        preset,
+        custom_dpi,
+        run_lossless_postprocess,
+        lossless_options,
+    ):
+        Path(output_path).write_bytes(b"compressed")
+        processor.request_cancel()
+        return True, "compressed", None
+
+    monkeypatch.setattr("model.flatten.flatten_processor.compress_pdf_with_ghostscript", fake_compress)
+
+    processor.start_flatten(session, plan)
+    _wait_for_completion(processor)
+    results = processor.poll_results()
+
+    cancelled = [result for result in results if result["type"] == "cancelled"]
+    assert len(cancelled) == 1
+    assert not Path(plan.jobs[0].output_path).exists()
+    assert not list(sample_pdf.parent.glob("*.flattening-*.pdf"))
+    assert not list(sample_pdf.parent.glob("*.flatten-compress-*.pdf"))

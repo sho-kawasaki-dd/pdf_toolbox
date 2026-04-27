@@ -5,6 +5,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from model.compress.settings import (
+    PDF_GHOSTSCRIPT_POSTPROCESS_DEFAULT,
+    PDF_GHOSTSCRIPT_PRESETS,
+    PDF_GHOSTSCRIPT_PRESET_DEFAULT,
+    PDF_LOSSLESS_OPTIONS_DEFAULT,
+)
+from model.external_tools import is_ghostscript_available
+
 
 WINDOWS_MAX_PATH = 260
 PREVIEW_TEMP_TOKEN = "0" * 32
@@ -49,10 +57,15 @@ class FlattenSession:
 
     def __init__(self) -> None:
         self.input_paths: list[str] = []
+        self.post_compression_enabled = False
+        self.ghostscript_preset = PDF_GHOSTSCRIPT_PRESET_DEFAULT
+        self.post_compression_use_pikepdf = PDF_GHOSTSCRIPT_POSTPROCESS_DEFAULT
+        self.ghostscript_available = is_ghostscript_available()
 
         self.total_items = 0
         self.processed_items = 0
         self.success_count = 0
+        self.warning_count = 0
         self.failure_count = 0
         self.skip_count = 0
 
@@ -77,12 +90,36 @@ class FlattenSession:
         self.total_items = max(0, total_items)
         self.processed_items = 0
         self.success_count = 0
+        self.warning_count = 0
         self.failure_count = 0
         self.skip_count = 0
+
+    def set_post_compression_enabled(self, enabled: bool) -> None:
+        self.post_compression_enabled = bool(enabled) and self.ghostscript_available
+
+    def set_ghostscript_preset(self, preset: str) -> None:
+        if preset not in PDF_GHOSTSCRIPT_PRESETS:
+            raise ValueError(f"Unsupported Ghostscript preset: {preset}")
+        self.ghostscript_preset = preset
+
+    def set_post_compression_use_pikepdf(self, enabled: bool) -> None:
+        self.post_compression_use_pikepdf = bool(enabled)
+
+    def refresh_external_tool_state(self) -> None:
+        self.ghostscript_available = is_ghostscript_available()
+        if not self.ghostscript_available:
+            self.post_compression_enabled = False
+
+    def build_post_compression_lossless_options(self) -> dict[str, bool]:
+        return dict(PDF_LOSSLESS_OPTIONS_DEFAULT)
 
     def record_success(self) -> None:
         self.processed_items += 1
         self.success_count += 1
+
+    def record_warning(self) -> None:
+        self.processed_items += 1
+        self.warning_count += 1
 
     def record_failure(self) -> None:
         self.processed_items += 1
@@ -103,6 +140,7 @@ class FlattenSession:
             "total_items": self.total_items,
             "processed_items": self.processed_items,
             "success_count": self.success_count,
+            "warning_count": self.warning_count,
             "failure_count": self.failure_count,
             "skip_count": self.skip_count,
             "progress_percent": self.progress_percent,
@@ -115,6 +153,10 @@ class FlattenSession:
     def build_temp_output_path(self, output_path: str, token: str) -> str:
         output = Path(output_path)
         return str(output.with_name(f".{output.stem}.flattening-{token}.pdf"))
+
+    def build_post_compression_temp_output_path(self, output_path: str, token: str) -> str:
+        output = Path(output_path)
+        return str(output.with_name(f".{output.stem}.flatten-compress-{token}.pdf"))
 
     def validate_windows_path_limit(self, path: str) -> None:
         normalized = str(Path(path))
