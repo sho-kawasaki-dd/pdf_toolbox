@@ -74,8 +74,8 @@ try {
         throw "Inno Setup build failed with exit code $LASTEXITCODE"
     }
 
-    $distPath = Join-Path $projectRoot 'dist\PDFToolbox_v1.1.0'
-    $installerPath = Join-Path $projectRoot 'installer\PDF Toolbox_Setup_v1.1.0.exe'
+    $distPath = Join-Path $projectRoot 'dist\PDFToolbox_v1.2.0'
+    $installerPath = Join-Path $projectRoot 'installer\PDF Toolbox_Setup_v1.2.0.exe'
 
     if (Test-Path $distPath) {
         Write-Host "Build completed: $distPath"

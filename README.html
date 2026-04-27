@@ -96,16 +96,23 @@
 <p>PDF を扱う日常作業をまとめて支援する Windows
 向けデスクトップアプリケーションです。 <code>main.py</code>
 から起動し、MVP（Model / View / Presenter）構成で実装されています。</p>
-<p>現在のバージョンは 1.1.0 です。</p>
-<h2 id="の更新内容">1.1.0 の更新内容</h2>
+<p>現在のバージョンは 1.2.0 です。</p>
+<h2 id="の更新内容">1.2.0 の更新内容</h2>
 <ul>
-<li>PDF フラット化機能を追加し、注釈やフォーム widget を編集不能な通常
-PDF として書き出せるようにしました</li>
-<li>フォーム付き PDF と broken appearance 系 PDF を含む flatten
-回帰テストを追加し、<code>fitz.Document.bake()</code>
-周辺の安定性を固定しました</li>
-<li>flatten の presenter / view テストと利用者向け文書、設計書、HTML
-文書を更新しました</li>
+<li>PDF 圧縮に Ghostscript エンジンを追加し、Windows ではレジストリ
+-&gt; PATH -&gt; 同梱バイナリの順で解決するようにしました</li>
+<li>圧縮画面を Native / Ghostscript のタブ構成へ変更し、Ghostscript
+プリセット、後段 pikepdf 可逆最適化、Ghostscript
+未検出時の無効タブ表示を追加しました</li>
+<li>PDF
+フラット化画面に最小限の後処理圧縮オプションを追加し、フラット化成功後に
+Ghostscript と任意の pikepdf 既定最適化を流せるようにしました</li>
+<li>フラット化後の圧縮が失敗しても flattened PDF
+自体は最終出力として公開し、<code>フラット化完了（圧縮はスキップされました）</code>
+として警告表示するようにしました</li>
+<li>Ghostscript / compression / flatten
+のテストと利用者向け文書、設計書、HTML 文書、版数ファイルを 1.2.0
+に更新しました</li>
 </ul>
 <h2 id="このアプリでできること">このアプリでできること</h2>
 <ul>
@@ -195,7 +202,13 @@ class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="
 <h3 id="pdf-圧縮">PDF 圧縮</h3>
 <ul>
 <li>入力として PDF、フォルダ、ZIP を受け付けます</li>
-<li>圧縮モードは非可逆、可逆、両方の 3 種類です</li>
+<li>Native タブでは圧縮モードとして非可逆、可逆、両方の 3
+種類を選べます</li>
+<li>Ghostscript タブでは 5 種類の標準プリセットとカスタム DPI
+を選べ、必要に応じて後段 pikepdf 可逆最適化も追加できます</li>
+<li>Ghostscript は Windows レジストリ -&gt; system PATH -&gt;
+同梱バイナリの順で探索されるため、より新しいシステム Ghostscript
+を入れている環境ではそれが優先されます</li>
 <li>非可逆圧縮では、PDF 内の透過付き PNG や soft mask
 付き画像は透過を保ったまま PNG 経路で再圧縮します</li>
 <li>非可逆圧縮では、CMYK JPEG 画像も RGB
@@ -205,6 +218,8 @@ class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="
 フォールバックで処理を継続します</li>
 <li><code>pngquant</code> の呼び出しは shell
 を介さず、解決済み実行パス・専用一時ディレクトリ・タイムアウト付きで実行されます</li>
+<li>Ghostscript
+が見つからない場合でもタブは表示されますが、説明文付きで無効化されます</li>
 <li>複数入力をまとめて処理し、成功・失敗・スキップ件数を集計表示します</li>
 </ul>
 <h3 id="pdf-jpeg">PDF → JPEG</h3>
@@ -221,10 +236,17 @@ class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="
 で平坦化し、編集対象を残さない PDF を生成します</li>
 <li>出力ファイル名は元 PDF と同じ場所に <code>*_flattened.pdf</code>
 を付けて保存します</li>
+<li>必要に応じて、フラット化後に Ghostscript 圧縮と後段 pikepdf
+既定最適化を追加できます</li>
+<li>フラット化成功後の圧縮だけが失敗した場合でも、flattened PDF
+はそのまま最終成果物として残します</li>
 <li>既存の出力がある場合は一括上書き確認を行い、「いいえ」を選ぶと競合分だけスキップして続行します</li>
 <li>暗号化 PDF
 やロック中ファイルなど処理できない入力は失敗として集計し、他のジョブは継続します</li>
 </ul>
+<h2 id="ライセンス">ライセンス</h2>
+<p>本プロジェクトは AGPL v3 or later で公開しています。詳細は <a
+href="LICENSE">LICENSE</a> を参照してください。</p>
 <h2 id="windows-で実行ファイルを作成する">Windows
 で実行ファイルを作成する</h2>
 <ol type="1">
@@ -251,7 +273,20 @@ class="sourceCode powershell"><code class="sourceCode powershell"><span id="cb4-
 <p>補足:</p>
 <ul>
 <li>初回起動時は SmartScreen 警告が表示される場合があります</li>
-<li>onedir 形式は onefile より起動時の切り分けがしやすい構成です</li>
+<li>onedir 形式は onefile より起動時の切り分けがしやすく、Ghostscript /
+pngquant を TEMP 展開なしで扱いやすい構成です</li>
+</ul>
+<h2 id="ghostscript-の運用方針">Ghostscript の運用方針</h2>
+<ul>
+<li>Windows では Ghostscript を
+<code>レジストリ -&gt; PATH -&gt; 同梱バイナリ</code>
+の順で解決します</li>
+<li>配布版には vendor 配下の Ghostscript を含めるため、未導入環境でも
+Ghostscript タブや flatten 後処理をそのまま使えます</li>
+<li>より新しい Ghostscript
+を使いたい場合は、システムへ新しい版をインストールしてください。アプリはそれを優先利用します</li>
+<li>フラット化画面の後処理では、詳細な可逆最適化オプションは出さず、pikepdf
+既定オプションの ON/OFF のみを提供します</li>
 </ul>
 <h2 id="実行ファイル配布版を使う場合">実行ファイル配布版を使う場合</h2>
 <p>配布された <code>.exe</code> を起動してください。
@@ -279,6 +314,10 @@ class="sourceCode powershell"><code class="sourceCode powershell"><span id="cb4-
 <ul>
 <li>実行中のジョブ保護のため、各 Presenter が遷移を制御しています</li>
 </ul></li>
+<li>Ghostscript タブや flatten 後処理が使えない</li>
+<li>Ghostscript が見つからない可能性があります</li>
+<li>Windows
+レジストリ、PATH、同梱バイナリの順で探索されます。システムへ最新版を入れるとそれが優先されます</li>
 <li>暗号化された PDF が処理できない
 <ul>
 <li>現状では暗号化 PDF の flatten や変換は行いません</li>

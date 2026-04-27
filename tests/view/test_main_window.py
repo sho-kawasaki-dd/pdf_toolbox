@@ -210,6 +210,23 @@ class TestMainWindowStubs:
         win.flatten_view.btn_add_folder.click()
         mock_presenter.add_folder.assert_called_once()
 
+        win.update_flatten_ui(
+            FlattenUiState(
+                ghostscript_available=True,
+                can_edit_post_compression=True,
+                can_edit_post_compression_details=True,
+            ),
+        )
+
+        win.flatten_view.chk_post_compression.click()
+        mock_presenter.set_post_compression_enabled.assert_called_once_with(True)
+
+        win.flatten_view.cmb_ghostscript_preset.setCurrentIndex(2)
+        mock_presenter.set_ghostscript_preset.assert_called_once_with("printer")
+
+        win.flatten_view.chk_postprocess_pikepdf.click()
+        mock_presenter.set_post_compression_use_pikepdf.assert_called_once_with(True)
+
         win.update_flatten_ui(FlattenUiState(can_execute=True))
         win.flatten_view.btn_execute.click()
         mock_presenter.execute_flatten.assert_called_once()
@@ -241,12 +258,20 @@ class TestMainWindowStubs:
             FlattenUiState(
                 input_items=[FlattenInputItem(path="C:/work/sample.pdf", label="[PDF] C:/work/sample.pdf")],
                 progress_value=25,
+                post_compression_enabled=True,
+                ghostscript_preset="printer",
+                post_compression_use_pikepdf=True,
+                ghostscript_available=True,
+                can_edit_post_compression_details=True,
                 can_execute=True,
             ),
         )
 
         assert win.flatten_view.input_list.count() == 1
         assert win.flatten_view.progress_bar.value() == 25
+        assert win.flatten_view.chk_post_compression.isChecked()
+        assert win.flatten_view.cmb_ghostscript_preset.currentData() == "printer"
+        assert win.flatten_view.chk_postprocess_pikepdf.isChecked()
         assert win.flatten_view.btn_execute.isEnabled()
 
     def test_get_selected_flatten_inputs(self, qtbot):

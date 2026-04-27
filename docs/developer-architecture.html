@@ -81,6 +81,8 @@
 <li><code>extract</code>: 複数 PDF から任意ページを抽出して 1 PDF
 を作成</li>
 <li><code>compress</code>: PDF / フォルダ / ZIP の一括圧縮</li>
+<li><code>flatten</code>: 注釈 /
+フォームを平坦化し、必要に応じて後処理圧縮を流す</li>
 <li><code>pdf-to-jpeg</code>: 単一 PDF の全ページ JPEG 書き出し</li>
 </ul>
 <h2 id="依存関係の考え方">2. 依存関係の考え方</h2>
@@ -116,6 +118,7 @@
 <li>Merge</li>
 <li>Compress</li>
 <li>Extract</li>
+<li>Flatten</li>
 <li>PDF to JPEG</li>
 </ul>
 <h3 id="ホーム画面の正本">3.3 ホーム画面の正本</h3>
@@ -146,6 +149,7 @@
 <ul>
 <li><code>progress</code></li>
 <li><code>finished</code> または <code>success</code></li>
+<li><code>warning</code></li>
 <li><code>failure</code> または <code>error</code></li>
 <li><code>cancelled</code></li>
 </ul>
@@ -225,16 +229,32 @@
 <li>Presenter: <code>presenter/compress_presenter.py</code></li>
 <li>Model: <code>model/compress/compression_session.py</code>,
 <code>model/compress/compression_processor.py</code>,
+<code>model/compress/compression_dispatch.py</code>,
 <code>model/compress/native_compressor.py</code>,
-<code>model/compress/settings.py</code></li>
+<code>model/compress/ghostscript_compressor.py</code>,
+<code>model/compress/settings.py</code>,
+<code>model/external_tools.py</code></li>
 <li>View: <code>view/compress/*</code></li>
 </ul>
 <p>主なポイント:</p>
 <ul>
 <li>入力は PDF、ZIP、フォルダ</li>
-<li>圧縮モードは
+<li>UI は Native / Ghostscript の 2
+タブ構成で、<code>CompressionSession.engine</code>
+が選択中エンジンの正本になる</li>
+<li>Native タブの圧縮モードは
 <code>lossy</code>、<code>lossless</code>、<code>both</code></li>
 <li>既定値は <code>model/compress/settings.py</code> に集約される</li>
+<li><code>model/external_tools.py</code>
+が外部バイナリ解決の正本で、Ghostscript は
+<code>winreg -&gt; PATH -&gt; bundled vendor binary</code>、pngquant は
+<code>PATH -&gt; bundled vendor binary -&gt; Pillow fallback</code>
+の順で扱う</li>
+<li><code>model/compress/compression_dispatch.py</code> が engine
+ごとの入口をまとめ、native と Ghostscript の切り替えを担当する</li>
+<li><code>model/compress/ghostscript_compressor.py</code> はプリセット /
+カスタム DPI からコマンドラインを組み立て、基底フラグと互換性 floor
+を適用し、必要に応じて後段 pikepdf 可逆最適化を流す</li>
 <li><code>model/compress/native_compressor.py</code> は、PDF
 内ラスター画像を読み出した段階で CMYK JPEG を RGB へ正規化し、ICC
 プロファイルがある場合はそれを優先して変換する</li>
@@ -242,8 +262,7 @@
 画像の soft mask を復元し、透過付き画像を JPEG へ潰さず PNG
 経路で再圧縮する</li>
 <li>PNG 量子化で <code>pngquant</code>
-を使うときは、<code>shutil.which("pngquant")</code>
-で解決した実行ファイルパスを shell
+を使うときは、解決済み実行ファイルパスを shell
 なしで起動し、専用一時ディレクトリ、タイムアウト、Windows の
 <code>CREATE_NO_WINDOW</code> を付けて実行する</li>
 <li><code>pngquant</code>
@@ -279,22 +298,28 @@ Processor が担う</li>
 <ul>
 <li>入力は PDF とフォルダで、フォルダは再帰探索して <code>.pdf</code>
 のみを拾う</li>
-<li><code>FlattenSession</code>
-は入力一覧、進捗件数、出力命名規則、Windows path 制約判定を保持する</li>
+<li><code>FlattenSession</code> は入力一覧、進捗件数、warning
+件数、後処理圧縮設定、出力命名規則、Windows path 制約判定を保持する</li>
 <li><code>FlattenProcessor.prepare_batch()</code> は探索、非 PDF /
 missing input の skip、既存出力との conflict 分離、出力パス長の
 preflight failure 化を担当する</li>
 <li><code>FlattenProcessor.start_flatten()</code> は worker thread
-を起動し、result queue へ success / failure / skipped / progress /
-finished / cancelled を順次積む</li>
+を起動し、result queue へ success / warning / failure / skipped /
+progress / finished / cancelled を順次積む</li>
 <li>Presenter は <code>MainWindow.schedule()</code> を使って polling
 し、進捗文言、完了ダイアログ、cancel 後 close を制御する</li>
 <li>実際の平坦化責務は <code>fitz.Document.bake()</code>
 に寄せ、annotation と widget
-を通常ページ内容へ焼き込んだ後、テンポラリ保存から
-<code>os.replace()</code> で確定する</li>
+を通常ページ内容へ焼き込んだ後、<code>Flatten -&gt; Temp A -&gt; Ghostscript -&gt; Temp B -&gt; publish</code>
+の順で後処理圧縮を差し込める</li>
+<li>flatten 後の Ghostscript は
+<code>model/compress/ghostscript_compressor.py</code>
+を再利用し、必要に応じて pikepdf 既定可逆最適化を追加する</li>
+<li>フラット化自体が成功し、後段圧縮だけが失敗した場合は Temp A の
+flattened PDF を publish し、warning として利用者へ通知する</li>
 <li>失敗系として、invalid PDF、encrypted PDF、保存先
-PermissionError、MAX_PATH 超過、broken appearance 系を failure / skip
+PermissionError、MAX_PATH 超過、broken appearance 系、Ghostscript
+後処理失敗を failure / warning / skip
 集計へ落とし、バッチ全体の継続性を優先する</li>
 </ul>
 <h2 id="画面遷移と終了制御">6. 画面遷移と終了制御</h2>
@@ -375,6 +400,21 @@ PermissionError、MAX_PATH 超過、broken appearance 系を failure / skip
 の入力検証、状態遷移、ダイアログ条件</li>
 <li><code>tests/view/</code>: View
 の基本動作、画面構築、シグナル接続</li>
+</ul>
+<p>Ghostscript 統合後の重点確認点:</p>
+<ul>
+<li><code>tests/model/test_external_tools.py</code>: Ghostscript /
+pngquant の解決順と bundled fallback</li>
+<li><code>tests/model/compress/test_ghostscript_compressor.py</code>:
+Ghostscript コマンド、基底フラグ、後段 pikepdf 連携</li>
+<li><code>tests/model/compress/test_compression_dispatch.py</code>,
+<code>tests/model/compress/test_compression_processor.py</code>: engine
+dispatch と ZIP 経路</li>
+<li><code>tests/model/flatten/test_flatten_processor.py</code>: flatten
+後圧縮成功、失敗時 fallback publish、cancel cleanup</li>
+<li><code>tests/presenter/test_flatten_presenter.py</code>,
+<code>tests/view/flatten/test_flatten_view.py</code>:
+後処理トグル、部分成功メッセージ、Ghostscript 未検出 UI</li>
 </ul>
 <p>新しい機能を足す場合は、少なくとも次の観点を押さえます。</p>
 <ul>

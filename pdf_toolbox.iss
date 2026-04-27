@@ -1,8 +1,8 @@
 #define MyAppName "PDF Toolbox"
-#define MyAppVersion "1.1.0"
+#define MyAppVersion "1.2.0"
 #define MyAppPublisher "Kawasaki Sho"
-#define MyAppExeName "PDFToolbox_v1.1.0.exe"
-#define MyAppBuildDir "dist\PDFToolbox_v1.1.0"
+#define MyAppExeName "PDFToolbox_v1.2.0.exe"
+#define MyAppBuildDir "dist\PDFToolbox_v1.2.0"
 #define MyAppIconFile "assets\images\pdf_manipulator_icon.ico"
 
 [Setup]

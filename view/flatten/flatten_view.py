@@ -38,7 +38,7 @@ class FlattenUiState:
 
     input_items: list[FlattenInputItem] = field(default_factory=list)
     progress_text: str = "待機中"
-    summary_text: str = "成功: 0件 / 失敗: 0件 / スキップ: 0件"
+    summary_text: str = "成功: 0件 / 警告: 0件 / 失敗: 0件 / スキップ: 0件"
     progress_value: int = 0
     post_compression_enabled: bool = False
     ghostscript_preset: str = PDF_GHOSTSCRIPT_PRESET_DEFAULT
