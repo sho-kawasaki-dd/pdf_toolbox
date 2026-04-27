@@ -67,15 +67,18 @@ try {
         throw 'Inno Setup Compiler was not found. Install Inno Setup or add ISCC.exe to PATH.'
     }
 
+    $versionScript = Join-Path $projectRoot 'scripts\get_version.py'
+    $version = & $venvPython $versionScript
+
     Write-Host "Using Inno Setup Compiler: $isccPath"
-    & $isccPath $issPath
+    & $isccPath "/DMyAppVersion=$version" $issPath
 
     if ($LASTEXITCODE -ne 0) {
         throw "Inno Setup build failed with exit code $LASTEXITCODE"
     }
 
-    $distPath = Join-Path $projectRoot 'dist\PDFToolbox_v1.2.0'
-    $installerPath = Join-Path $projectRoot 'installer\PDF Toolbox_Setup_v1.2.0.exe'
+    $distPath = Join-Path $projectRoot 'dist\PDFToolbox'
+    $installerPath = Join-Path $projectRoot "installer\PDF Toolbox_Setup_v$version.exe"
 
     if (Test-Path $distPath) {
         Write-Host "Build completed: $distPath"

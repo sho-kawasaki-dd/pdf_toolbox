@@ -1,8 +1,10 @@
 #define MyAppName "PDF Toolbox"
+#ifndef MyAppVersion
 #define MyAppVersion "1.2.0"
+#endif
 #define MyAppPublisher "Kawasaki Sho"
-#define MyAppExeName "PDFToolbox_v1.2.0.exe"
-#define MyAppBuildDir "dist\PDFToolbox_v1.2.0"
+#define MyAppExeName "PDFToolbox.exe"
+#define MyAppBuildDir "dist\PDFToolbox"
 #define MyAppIconFile "assets\images\pdf_manipulator_icon.ico"
 
 [Setup]
@@ -30,6 +32,9 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Additional icons:"; Flags: checkedonce
+
+[InstallDelete]
+Type: filesandordirs; Name: "{app}\_internal"
 
 [Files]
 Source: "{#MyAppBuildDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
