@@ -15,7 +15,7 @@ $rootPath = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 # バックアップファイル名は作成日時を含め、連続実行しても重複しにくい命名にする。
 $timestamp = Get-Date -Format 'yyyyMMdd_HHmmss'
-$appName = 'pdf_toolbox_v1.1.0'
+$appName = 'pdf_toolbox_v1.2.0'
 $archiveName = "${appName}_$timestamp.zip"
 $archivePath = Join-Path $rootPath $archiveName
 
