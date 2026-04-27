@@ -187,7 +187,9 @@ class FlattenView(QWidget):
         progress_layout.addWidget(self.lbl_summary)
 
         self.chk_flatten_annots = QCheckBox("アノテーションをフラット化")
+        self.chk_flatten_annots.setFont(make_app_font(12))
         self.chk_flatten_widgets = QCheckBox("フォームフィールドをフラット化")
+        self.chk_flatten_widgets.setFont(make_app_font(12))
         progress_layout.addWidget(self.chk_flatten_annots)
         progress_layout.addWidget(self.chk_flatten_widgets)
 
