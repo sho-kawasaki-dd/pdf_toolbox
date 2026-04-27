@@ -40,6 +40,8 @@ class FlattenUiState:
     progress_text: str = "待機中"
     summary_text: str = "成功: 0件 / 警告: 0件 / 失敗: 0件 / スキップ: 0件"
     progress_value: int = 0
+    flatten_annots_enabled: bool = True
+    flatten_widgets_enabled: bool = True
     post_compression_enabled: bool = False
     ghostscript_preset: str = PDF_GHOSTSCRIPT_PRESET_DEFAULT
     post_compression_use_pikepdf: bool = False
@@ -50,6 +52,7 @@ class FlattenUiState:
     can_clear_inputs: bool = False
     can_execute: bool = False
     can_back_home: bool = True
+    can_edit_flatten_options: bool = True
     can_edit_post_compression: bool = True
     can_edit_post_compression_details: bool = False
     is_running: bool = False
@@ -183,6 +186,11 @@ class FlattenView(QWidget):
         progress_layout.addWidget(self.lbl_progress)
         progress_layout.addWidget(self.lbl_summary)
 
+        self.chk_flatten_annots = QCheckBox("アノテーションをフラット化")
+        self.chk_flatten_widgets = QCheckBox("フォームフィールドをフラット化")
+        progress_layout.addWidget(self.chk_flatten_annots)
+        progress_layout.addWidget(self.chk_flatten_widgets)
+
         self.btn_execute = QPushButton("フラット化を実行")
         self.btn_execute.setMinimumHeight(48)
         self.btn_execute.setFont(make_app_font(16, bold=True))
@@ -228,6 +236,8 @@ class FlattenView(QWidget):
         self.btn_clear.clicked.connect(presenter.clear_inputs)
         self.btn_execute.clicked.connect(presenter.execute_flatten)
         self.input_list.paths_dropped.connect(presenter.handle_dropped_paths)
+        self.chk_flatten_annots.toggled.connect(presenter.set_flatten_annots_enabled)
+        self.chk_flatten_widgets.toggled.connect(presenter.set_flatten_widgets_enabled)
         self.chk_post_compression.toggled.connect(presenter.set_post_compression_enabled)
         self.cmb_ghostscript_preset.currentIndexChanged.connect(
             lambda _index: presenter.set_ghostscript_preset(self.cmb_ghostscript_preset.currentData()),
@@ -244,6 +254,8 @@ class FlattenView(QWidget):
         self.progress_bar.setValue(state.progress_value)
         self.lbl_progress.setText(state.progress_text)
         self.lbl_summary.setText(state.summary_text)
+        self._apply_checkbox(self.chk_flatten_annots, state.flatten_annots_enabled)
+        self._apply_checkbox(self.chk_flatten_widgets, state.flatten_widgets_enabled)
         self._apply_checkbox(self.chk_post_compression, state.post_compression_enabled)
         self._apply_combo_value(self.cmb_ghostscript_preset, state.ghostscript_preset)
         self._apply_checkbox(self.chk_postprocess_pikepdf, state.post_compression_use_pikepdf)
@@ -257,6 +269,8 @@ class FlattenView(QWidget):
         self.btn_execute.setEnabled(state.can_execute)
         self.btn_back_home.setEnabled(state.can_back_home)
         self.input_list.setAcceptDrops(not state.is_running)
+        self.chk_flatten_annots.setEnabled(state.can_edit_flatten_options)
+        self.chk_flatten_widgets.setEnabled(state.can_edit_flatten_options)
         self.chk_post_compression.setEnabled(state.can_edit_post_compression and state.ghostscript_available)
         self.cmb_ghostscript_preset.setEnabled(state.can_edit_post_compression_details)
         self.chk_postprocess_pikepdf.setEnabled(state.can_edit_post_compression_details)

@@ -57,6 +57,8 @@ class FlattenSession:
 
     def __init__(self) -> None:
         self.input_paths: list[str] = []
+        self.flatten_annots_enabled = True
+        self.flatten_widgets_enabled = True
         self.post_compression_enabled = False
         self.ghostscript_preset = PDF_GHOSTSCRIPT_PRESET_DEFAULT
         self.post_compression_use_pikepdf = PDF_GHOSTSCRIPT_POSTPROCESS_DEFAULT
@@ -96,6 +98,12 @@ class FlattenSession:
 
     def set_post_compression_enabled(self, enabled: bool) -> None:
         self.post_compression_enabled = bool(enabled) and self.ghostscript_available
+
+    def set_flatten_annots_enabled(self, enabled: bool) -> None:
+        self.flatten_annots_enabled = bool(enabled)
+
+    def set_flatten_widgets_enabled(self, enabled: bool) -> None:
+        self.flatten_widgets_enabled = bool(enabled)
 
     def set_ghostscript_preset(self, preset: str) -> None:
         if preset not in PDF_GHOSTSCRIPT_PRESETS:

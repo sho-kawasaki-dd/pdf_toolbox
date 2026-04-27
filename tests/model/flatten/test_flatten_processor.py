@@ -111,6 +111,45 @@ def test_start_flatten_creates_output_and_queue_events(annotated_pdf: Path) -> N
         assert flattened.page_count == 1
 
 
+def test_start_flatten_passes_bake_flags_and_reports_size_metrics(sample_pdf: Path, monkeypatch) -> None:
+    session = FlattenSession()
+    session.add_input(str(sample_pdf))
+    session.set_flatten_annots_enabled(False)
+    session.set_flatten_widgets_enabled(True)
+
+    processor = FlattenProcessor()
+    plan = processor.prepare_batch(session)
+
+    bake_args: dict[str, bool] = {}
+
+    class FakeDocument:
+        def bake(self, *, annots: bool, widgets: bool) -> None:
+            bake_args["annots"] = annots
+            bake_args["widgets"] = widgets
+
+        def close(self) -> None:
+            pass
+
+    def fake_open_source_pdf(_input_path: Path) -> FakeDocument:
+        return FakeDocument()
+
+    def fake_save(_document, temp_output: Path) -> None:
+        temp_output.write_bytes(b"flattened-data")
+
+    monkeypatch.setattr(processor, "_open_source_pdf", fake_open_source_pdf)
+    monkeypatch.setattr(processor, "_save_flattened_pdf", fake_save)
+
+    processor.start_flatten(session, plan)
+    _wait_for_completion(processor)
+    results = processor.poll_results()
+
+    successes = [result for result in results if result["type"] == "success"]
+    assert bake_args == {"annots": False, "widgets": True}
+    assert len(successes) == 1
+    assert successes[0]["input_bytes"] == sample_pdf.stat().st_size
+    assert successes[0]["output_bytes"] == len(b"flattened-data")
+
+
 def test_start_flatten_flattens_form_widgets(form_widget_pdf: Path) -> None:
     session = FlattenSession()
     session.add_input(str(form_widget_pdf))

@@ -19,6 +19,19 @@ def test_input_management_and_clear(tmp_path) -> None:
     assert session.input_paths == []
 
 
+def test_flatten_toggle_defaults_and_updates() -> None:
+    session = FlattenSession()
+
+    assert session.flatten_annots_enabled is True
+    assert session.flatten_widgets_enabled is True
+
+    session.set_flatten_annots_enabled(False)
+    session.set_flatten_widgets_enabled(False)
+
+    assert session.flatten_annots_enabled is False
+    assert session.flatten_widgets_enabled is False
+
+
 def test_build_output_and_temp_paths(sample_pdf) -> None:
     session = FlattenSession()
 

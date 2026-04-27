@@ -28,6 +28,7 @@ class FlattenPresenter:
         self._close_after_cancel = False
         self._status = "idle"
         self._last_error_message: str | None = None
+        self._recent_successes: list[dict[str, object]] = []
         self._recent_failures: list[dict[str, object]] = []
         self._recent_warnings: list[dict[str, object]] = []
         self._recent_skips: list[dict[str, object]] = []
@@ -83,6 +84,14 @@ class FlattenPresenter:
             self._session.set_post_compression_enabled(enabled)
         self._refresh_ui()
 
+    def set_flatten_annots_enabled(self, enabled: bool) -> None:
+        self._session.set_flatten_annots_enabled(enabled)
+        self._refresh_ui()
+
+    def set_flatten_widgets_enabled(self, enabled: bool) -> None:
+        self._session.set_flatten_widgets_enabled(enabled)
+        self._refresh_ui()
+
     def set_ghostscript_preset(self, preset: str) -> None:
         self._session.set_ghostscript_preset(preset)
         self._refresh_ui()
@@ -99,6 +108,10 @@ class FlattenPresenter:
             self._view.show_error("入力不足", "フラット化対象のPDFまたはフォルダを追加してください。")
             return
 
+        if not (self._session.flatten_annots_enabled or self._session.flatten_widgets_enabled):
+            self._view.show_error("設定不足", "アノテーションまたはフォームフィールドの少なくとも一方を有効にしてください。")
+            return
+
         self._session.refresh_external_tool_state()
 
         initial_plan = self._processor.prepare_batch(self._session)
@@ -108,6 +121,7 @@ class FlattenPresenter:
             return
 
         self._session.begin_batch(0)
+        self._recent_successes.clear()
         self._recent_failures.clear()
         self._recent_warnings.clear()
         self._recent_skips.clear()
@@ -181,6 +195,8 @@ class FlattenPresenter:
 
         for result in self._processor.poll_results():
             result_type = result.get("type")
+            if result_type == "success":
+                self._recent_successes.append(result)
             if result_type == "failure" and result.get("item") is None:
                 top_level_failure = result
             elif result_type == "warning":
@@ -244,6 +260,11 @@ class FlattenPresenter:
             f"スキップ: {result.get('skip_count', 0)}件",
         ]
 
+        size_lines = self._build_size_lines()
+        if size_lines:
+            lines.append("")
+            lines.extend(size_lines)
+
         if self._recent_warnings:
             lines.append("")
             lines.append("圧縮スキップ例:")
@@ -269,6 +290,51 @@ class FlattenPresenter:
                 )
 
         return "\n".join(lines)
+
+    def _build_size_lines(self) -> list[str]:
+        successful_results = self._recent_successes + self._recent_warnings
+        if not successful_results:
+            return []
+
+        total_input = 0
+        total_output = 0
+        for result in successful_results:
+            total_input += self._coerce_int(result.get("input_bytes", 0))
+            total_output += self._coerce_int(result.get("output_bytes", 0))
+
+        if total_input <= 0:
+            return [
+                "フラット化前総容量: 算出不可",
+                "フラット化後総容量: 算出不可",
+                "増減量: 算出不可",
+            ]
+
+        delta_bytes = total_output - total_input
+        sign = "+" if delta_bytes >= 0 else "-"
+        return [
+            f"フラット化前総容量: {self._format_size(total_input)}",
+            f"フラット化後総容量: {self._format_size(total_output)}",
+            f"増減量: {sign}{self._format_size(abs(delta_bytes))}",
+        ]
+
+    def _format_size(self, size_bytes: int) -> str:
+        units = ("B", "KB", "MB", "GB", "TB")
+        value = float(max(0, size_bytes))
+        unit_index = 0
+        while value >= 1024 and unit_index < len(units) - 1:
+            value /= 1024
+            unit_index += 1
+        return f"{value:.1f} {units[unit_index]}"
+
+    def _coerce_int(self, value: object) -> int:
+        if isinstance(value, int):
+            return value
+        if isinstance(value, str):
+            try:
+                return int(value)
+            except ValueError:
+                return 0
+        return 0
 
     def _build_ui_state(self) -> FlattenUiState:
         is_running = self._processor.is_running
@@ -298,6 +364,8 @@ class FlattenPresenter:
             progress_text=progress_text,
             summary_text=summary_text,
             progress_value=progress_value,
+            flatten_annots_enabled=self._session.flatten_annots_enabled,
+            flatten_widgets_enabled=self._session.flatten_widgets_enabled,
             post_compression_enabled=self._session.post_compression_enabled,
             ghostscript_preset=self._session.ghostscript_preset,
             post_compression_use_pikepdf=self._session.post_compression_use_pikepdf,
@@ -306,8 +374,13 @@ class FlattenPresenter:
             can_add_inputs=not is_running,
             can_remove_selected=bool(self._session.input_paths) and not is_running,
             can_clear_inputs=bool(self._session.input_paths) and not is_running,
-            can_execute=bool(self._session.input_paths) and not is_running,
+            can_execute=(
+                bool(self._session.input_paths)
+                and (self._session.flatten_annots_enabled or self._session.flatten_widgets_enabled)
+                and not is_running
+            ),
             can_back_home=not is_running,
+            can_edit_flatten_options=not is_running,
             can_edit_post_compression=not is_running,
             can_edit_post_compression_details=(
                 not is_running

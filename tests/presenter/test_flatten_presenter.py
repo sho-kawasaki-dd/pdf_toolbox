@@ -30,6 +30,29 @@ class TestFlattenPresenter:
         assert state.can_execute is False
         assert state.can_clear_inputs is False
         assert state.can_back_home is True
+        assert state.flatten_annots_enabled is True
+        assert state.flatten_widgets_enabled is True
+
+    def test_flatten_target_settings_propagate_to_ui(self, sample_pdf: Path) -> None:
+        view = _make_mock_view()
+        presenter = FlattenPresenter(view)
+        presenter.handle_dropped_paths([str(sample_pdf)])
+        view.reset_mock()
+
+        presenter.set_flatten_annots_enabled(False)
+
+        state = view.update_flatten_ui.call_args[0][0]
+        assert state.flatten_annots_enabled is False
+        assert state.flatten_widgets_enabled is True
+        assert state.can_execute is True
+
+        view.reset_mock()
+        presenter.set_flatten_widgets_enabled(False)
+
+        state = view.update_flatten_ui.call_args[0][0]
+        assert state.flatten_annots_enabled is False
+        assert state.flatten_widgets_enabled is False
+        assert state.can_execute is False
 
     def test_unavailable_ghostscript_disables_post_compression_controls(self, monkeypatch) -> None:
         monkeypatch.setattr("model.flatten.flatten_session.is_ghostscript_available", lambda: False)
@@ -265,6 +288,23 @@ class TestFlattenPresenter:
         assert "失敗例:" in message
         assert "スキップ例:" in message
 
+    def test_poll_results_shows_size_summary(self) -> None:
+        view = _make_mock_view()
+        presenter = FlattenPresenter(view)
+        presenter._processor.is_running = False
+        presenter._processor.poll_results = MagicMock(return_value=[
+            {"type": "success", "item": "a.pdf", "input_bytes": 1024, "output_bytes": 1536},
+            {"type": "warning", "item": "b.pdf", "input_bytes": 2048, "output_bytes": 3072, "message": "warn"},
+            {"type": "finished", "success_count": 1, "warning_count": 1, "failure_count": 0, "skip_count": 0},
+        ])
+
+        presenter._poll_flatten_results()
+
+        message = view.show_info.call_args[0][1]
+        assert "フラット化前総容量: 3.0 KB" in message
+        assert "フラット化後総容量: 4.5 KB" in message
+        assert "増減量: +1.5 KB" in message
+
     def test_poll_results_shows_partial_success_message(self) -> None:
         view = _make_mock_view()
         presenter = FlattenPresenter(view)
@@ -311,3 +351,17 @@ class TestFlattenPresenter:
 
         view.cancel_schedule.assert_called_once_with("timer_1")
         view.destroy_window.assert_called_once()
+
+    def test_execute_flatten_rejects_when_both_flatten_targets_disabled(self, sample_pdf: Path) -> None:
+        view = _make_mock_view()
+        presenter = FlattenPresenter(view)
+        presenter.handle_dropped_paths([str(sample_pdf)])
+        presenter.set_flatten_annots_enabled(False)
+        presenter.set_flatten_widgets_enabled(False)
+        view.reset_mock()
+
+        presenter.execute_flatten()
+
+        view.show_error.assert_called_once()
+        assert "少なくとも一方" in view.show_error.call_args[0][1]
+        assert presenter.is_busy() is False

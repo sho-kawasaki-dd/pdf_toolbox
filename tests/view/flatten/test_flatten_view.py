@@ -26,6 +26,8 @@ class TestFlattenView:
         assert view.btn_clear.isEnabled() is False
         assert view.btn_execute.isEnabled() is False
         assert view.btn_back_home.isEnabled() is True
+        assert view.chk_flatten_annots.isChecked() is True
+        assert view.chk_flatten_widgets.isChecked() is True
 
     def test_update_ui_populates_inputs_and_progress(self, qtbot) -> None:
         view = FlattenView()
@@ -36,6 +38,8 @@ class TestFlattenView:
             progress_text="進捗: 1 / 2 (50%)",
             summary_text="成功: 1件 / 警告: 0件 / 失敗: 0件 / スキップ: 0件",
             progress_value=50,
+            flatten_annots_enabled=False,
+            flatten_widgets_enabled=True,
             can_execute=True,
             can_clear_inputs=True,
             post_compression_enabled=True,
@@ -52,6 +56,8 @@ class TestFlattenView:
         assert view.progress_bar.value() == 50
         assert view.lbl_progress.text() == "進捗: 1 / 2 (50%)"
         assert view.btn_execute.isEnabled() is True
+        assert view.chk_flatten_annots.isChecked() is False
+        assert view.chk_flatten_widgets.isChecked() is True
         assert view.chk_post_compression.isChecked() is True
         assert view.cmb_ghostscript_preset.currentData() == "printer"
         assert view.chk_postprocess_pikepdf.isChecked() is True
@@ -64,11 +70,14 @@ class TestFlattenView:
             FlattenUiState(
                 ghostscript_available=False,
                 ghostscript_status_text="Ghostscript が見つからないため、フラット化後の圧縮は利用できません。",
+                can_edit_flatten_options=False,
                 can_edit_post_compression=True,
                 can_edit_post_compression_details=False,
             ),
         )
 
+        assert view.chk_flatten_annots.isEnabled() is False
+        assert view.chk_flatten_widgets.isEnabled() is False
         assert view.chk_post_compression.isEnabled() is False
         assert view.cmb_ghostscript_preset.isEnabled() is False
         assert view.chk_postprocess_pikepdf.isEnabled() is False
@@ -106,6 +115,7 @@ class TestFlattenView:
                 can_clear_inputs=False,
                 can_execute=False,
                 can_back_home=False,
+                can_edit_flatten_options=False,
                 is_running=True,
             ),
         )
@@ -116,6 +126,8 @@ class TestFlattenView:
         assert view.btn_clear.isEnabled() is False
         assert view.btn_execute.isEnabled() is False
         assert view.btn_back_home.isEnabled() is False
+        assert view.chk_flatten_annots.isEnabled() is False
+        assert view.chk_flatten_widgets.isEnabled() is False
         assert view.input_list.acceptDrops() is False
 
     def test_drop_event_emits_local_pdf_and_folder_paths(self, qtbot, tmp_path: Path) -> None:

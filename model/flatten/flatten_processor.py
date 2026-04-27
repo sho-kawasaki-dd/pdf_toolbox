@@ -241,25 +241,33 @@ class FlattenProcessor:
             output_path.parent.mkdir(parents=True, exist_ok=True)
             self._raise_if_cancelled()
             document = self._open_source_pdf(source_path)
-            document.bake()
+            document.bake(
+                annots=session.flatten_annots_enabled,
+                widgets=session.flatten_widgets_enabled,
+            )
             self._raise_if_cancelled()
             self._save_flattened_pdf(document, temp_output)
             self._raise_if_cancelled()
 
+            input_bytes = self._get_file_size_bytes(source_path)
             if session.post_compression_enabled:
                 return self._run_post_compression(
                     session=session,
                     job=job,
+                    input_bytes=input_bytes,
                     flattened_temp_output=temp_output,
                     compressed_temp_output=compressed_temp_output,
                     final_output_path=output_path,
                 )
 
             os.replace(temp_output, output_path)
+            output_bytes = self._get_file_size_bytes(output_path)
             return {
                 "type": "success",
                 "item": job.candidate.source_label,
                 "output_path": str(output_path),
+                "input_bytes": input_bytes,
+                "output_bytes": output_bytes,
             }
         except FlattenCancelledError:
             self._cleanup_temp_output(temp_output)
@@ -333,6 +341,7 @@ class FlattenProcessor:
         *,
         session: FlattenSession,
         job: FlattenJob,
+        input_bytes: int,
         flattened_temp_output: Path,
         compressed_temp_output: Path,
         final_output_path: Path,
@@ -351,20 +360,26 @@ class FlattenProcessor:
         if compression_ok:
             os.replace(compressed_temp_output, final_output_path)
             self._cleanup_temp_output(flattened_temp_output)
+            output_bytes = self._get_file_size_bytes(final_output_path)
             return {
                 "type": "success",
                 "item": job.candidate.source_label,
                 "output_path": str(final_output_path),
                 "message": compression_message,
+                "input_bytes": input_bytes,
+                "output_bytes": output_bytes,
             }
 
         self._cleanup_temp_output(compressed_temp_output)
         os.replace(flattened_temp_output, final_output_path)
+        output_bytes = self._get_file_size_bytes(final_output_path)
         return {
             "type": "warning",
             "item": job.candidate.source_label,
             "output_path": str(final_output_path),
             "message": f"フラット化完了（圧縮はスキップされました）: {compression_message}",
+            "input_bytes": input_bytes,
+            "output_bytes": output_bytes,
         }
 
     def _raise_if_cancelled(self) -> None:
@@ -377,3 +392,9 @@ class FlattenProcessor:
                 temp_output.unlink()
         except OSError:
             pass
+
+    def _get_file_size_bytes(self, path: Path) -> int:
+        try:
+            return path.stat().st_size
+        except OSError:
+            return 0
