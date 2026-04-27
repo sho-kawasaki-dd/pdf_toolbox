@@ -4,6 +4,9 @@ from pathlib import Path
 
 from model.compress.compression_session import CompressionCandidate, CompressionSession
 from model.compress.settings import (
+    PDF_COMPRESSION_ENGINE_NATIVE,
+    PDF_GHOSTSCRIPT_CUSTOM_DPI_DEFAULT,
+    PDF_GHOSTSCRIPT_PRESET_DEFAULT,
     PDF_LOSSLESS_OPTIONS_DEFAULT,
     PDF_LOSSY_JPEG_QUALITY_DEFAULT,
     PDF_LOSSY_PNG_QUALITY_DEFAULT,
@@ -13,11 +16,15 @@ from model.compress.settings import (
 def test_session_defaults() -> None:
     session = CompressionSession()
 
+    assert session.engine == PDF_COMPRESSION_ENGINE_NATIVE
     assert session.mode == "both"
     assert session.jpeg_quality == PDF_LOSSY_JPEG_QUALITY_DEFAULT
     assert session.png_quality == PDF_LOSSY_PNG_QUALITY_DEFAULT
     assert session.lossless_options == PDF_LOSSLESS_OPTIONS_DEFAULT
     assert session.lossless_options["clean_metadata"] is False
+    assert session.ghostscript_preset == PDF_GHOSTSCRIPT_PRESET_DEFAULT
+    assert session.ghostscript_custom_dpi == PDF_GHOSTSCRIPT_CUSTOM_DPI_DEFAULT
+    assert session.ghostscript_use_pikepdf_postprocess is False
 
 
 def test_add_remove_and_clear_inputs(tmp_path: Path) -> None:
@@ -90,6 +97,9 @@ def test_setting_validation_rejects_out_of_range_values() -> None:
     import pytest
 
     with pytest.raises(ValueError):
+        session.set_engine("unsupported")
+
+    with pytest.raises(ValueError):
         session.set_mode("unsupported")
 
     with pytest.raises(ValueError):
@@ -104,8 +114,33 @@ def test_setting_validation_rejects_out_of_range_values() -> None:
     with pytest.raises(ValueError):
         session.set_pngquant_speed(12)
 
+    with pytest.raises(ValueError):
+        session.set_ghostscript_preset("unsupported")
+
+    with pytest.raises(ValueError):
+        session.set_ghostscript_custom_dpi(0)
+
     with pytest.raises(KeyError):
         session.update_lossless_options(unknown_option=True)
+
+
+def test_ghostscript_settings_and_refresh(monkeypatch) -> None:
+    session = CompressionSession()
+
+    session.set_engine("ghostscript")
+    session.set_ghostscript_preset("custom")
+    session.set_ghostscript_custom_dpi(200)
+    session.set_ghostscript_postprocess_enabled(True)
+
+    assert session.engine == "ghostscript"
+    assert session.ghostscript_uses_custom_dpi is True
+    assert session.ghostscript_custom_dpi == 200
+    assert session.ghostscript_use_pikepdf_postprocess is True
+
+    monkeypatch.setattr("model.compress.compression_session.is_ghostscript_available", lambda: False)
+    session.refresh_external_tool_state()
+
+    assert session.ghostscript_available is False
 
 
 def test_sanitize_filename_handles_reserved_names_and_invalid_characters() -> None:

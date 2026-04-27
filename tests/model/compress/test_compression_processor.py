@@ -6,6 +6,7 @@ from pathlib import Path
 
 from model.compress.compression_processor import CompressionProcessor
 from model.compress.compression_session import CompressionSession
+from model.compress.compression_dispatch import CompressionRequest
 
 
 def _wait_for_completion(processor: CompressionProcessor, timeout: float = 10.0) -> None:
@@ -191,3 +192,70 @@ def test_success_results_include_size_metrics(
     assert success["input_bytes"] == sample_pdf.stat().st_size
     assert success["lossy_output_bytes"] == sample_pdf.stat().st_size
     assert success["final_output_bytes"] == sample_pdf.stat().st_size
+
+
+def test_processor_passes_engine_request_for_file_inputs(
+    sample_pdf: Path,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_compress(source: str | Path, output: str | Path, **kwargs: object):
+        captured["source"] = Path(source)
+        captured["output"] = Path(output)
+        captured.update(kwargs)
+        shutil.copy2(source, output)
+        return True, "ok"
+
+    monkeypatch.setattr("model.compress.compression_processor.compress_pdf", fake_compress)
+
+    session = CompressionSession()
+    session.set_engine("ghostscript")
+    session.set_ghostscript_preset("printer")
+    session.set_ghostscript_custom_dpi(180)
+    session.set_ghostscript_postprocess_enabled(True)
+    session.add_input(str(sample_pdf))
+    session.set_output_dir(str(tmp_path / "out"))
+
+    processor = CompressionProcessor(max_workers=1)
+    processor.start_compression(session)
+    _wait_for_completion(processor)
+
+    request = captured["request"]
+    assert isinstance(request, CompressionRequest)
+    assert request.engine == "ghostscript"
+    assert request.ghostscript_preset == "printer"
+    assert request.ghostscript_custom_dpi == 180
+    assert request.ghostscript_use_pikepdf_postprocess is True
+
+
+def test_processor_passes_engine_request_for_zip_inputs(
+    mixed_zip: Path,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    captured_requests: list[CompressionRequest] = []
+
+    def fake_compress(source: str | Path, output: str | Path, **kwargs: object):
+        request = kwargs.get("request")
+        if isinstance(request, CompressionRequest):
+            captured_requests.append(request)
+        shutil.copy2(source, output)
+        return True, "ok"
+
+    monkeypatch.setattr("model.compress.compression_processor.compress_pdf", fake_compress)
+
+    session = CompressionSession()
+    session.set_engine("ghostscript")
+    session.set_ghostscript_preset("screen")
+    session.add_input(str(mixed_zip))
+    session.set_output_dir(str(tmp_path / "out"))
+
+    processor = CompressionProcessor(max_workers=1)
+    processor.start_compression(session)
+    _wait_for_completion(processor)
+
+    assert captured_requests
+    assert all(request.engine == "ghostscript" for request in captured_requests)
+    assert all(request.ghostscript_preset == "screen" for request in captured_requests)

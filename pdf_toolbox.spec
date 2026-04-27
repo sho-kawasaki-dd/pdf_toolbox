@@ -11,6 +11,7 @@ icon_path = project_root / "assets" / "images" / "pdf_manipulator_icon.ico"
 datas = [
     (str(project_root / "assets"), "assets"),
     (str(project_root / "fonts"), "fonts"),
+    (str(project_root / "vendor"), "vendor"),
 ]
 
 binaries = collect_dynamic_libs("pikepdf")

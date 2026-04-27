@@ -20,7 +20,8 @@ from model.compress.compression_session import (
     CompressionJob,
     CompressionSession,
 )
-from model.compress.native_compressor import CompressionMetrics, compress_pdf, validate_pdf_bytes, validate_pdf_file
+from model.compress.compression_dispatch import CompressionRequest, compress_pdf
+from model.compress.native_compressor import CompressionMetrics, validate_pdf_bytes, validate_pdf_file
 from model.compress.settings import ZIP_SCAN_MAX_DEPTH
 
 
@@ -331,16 +332,23 @@ class CompressionProcessor:
                 # が残り続けるのを避ける。
                 temp_source = Path(temp_dir) / job.candidate.preferred_filename
                 temp_source.write_bytes(job.candidate.source_bytes)
+                request = CompressionRequest(
+                    engine=session.engine,
+                    mode=session.mode,
+                    target_dpi=session.lossy_dpi,
+                    jpeg_quality=session.jpeg_quality,
+                    png_quality=session.png_quality,
+                    pngquant_speed=session.pngquant_speed,
+                    lossless_options=dict(session.lossless_options),
+                    ghostscript_preset=session.ghostscript_preset,
+                    ghostscript_custom_dpi=session.ghostscript_custom_dpi,
+                    ghostscript_use_pikepdf_postprocess=session.ghostscript_use_pikepdf_postprocess,
+                )
                 ok, message, metrics = self._normalize_compress_result(
                     compress_pdf(
                         temp_source,
                         output_path,
-                        mode=session.mode,
-                        target_dpi=session.lossy_dpi,
-                        jpeg_quality=session.jpeg_quality,
-                        png_quality=session.png_quality,
-                        pngquant_speed=session.pngquant_speed,
-                        lossless_options=session.lossless_options,
+                        request=request,
                     ),
                     input_bytes,
                     output_path,
@@ -353,16 +361,23 @@ class CompressionProcessor:
                     "reason": "missing source path",
                 }
 
+            request = CompressionRequest(
+                engine=session.engine,
+                mode=session.mode,
+                target_dpi=session.lossy_dpi,
+                jpeg_quality=session.jpeg_quality,
+                png_quality=session.png_quality,
+                pngquant_speed=session.pngquant_speed,
+                lossless_options=dict(session.lossless_options),
+                ghostscript_preset=session.ghostscript_preset,
+                ghostscript_custom_dpi=session.ghostscript_custom_dpi,
+                ghostscript_use_pikepdf_postprocess=session.ghostscript_use_pikepdf_postprocess,
+            )
             ok, message, metrics = self._normalize_compress_result(
                 compress_pdf(
                     job.candidate.source_path,
                     output_path,
-                    mode=session.mode,
-                    target_dpi=session.lossy_dpi,
-                    jpeg_quality=session.jpeg_quality,
-                    png_quality=session.png_quality,
-                    pngquant_speed=session.pngquant_speed,
-                    lossless_options=session.lossless_options,
+                    request=request,
                 ),
                 input_bytes,
                 output_path,

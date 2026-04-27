@@ -11,6 +11,12 @@ from __future__ import annotations
 # 「PyMuPDF のみ」「pikepdf のみ」「その 2 段構成」のいずれかとして
 # 明確に設計されているためである。
 PDF_ALLOWED_MODES: frozenset[str] = frozenset({"lossy", "lossless", "both"})
+PDF_COMPRESSION_ENGINE_NATIVE = "native"
+PDF_COMPRESSION_ENGINE_GHOSTSCRIPT = "ghostscript"
+PDF_ALLOWED_ENGINES: frozenset[str] = frozenset({
+    PDF_COMPRESSION_ENGINE_NATIVE,
+    PDF_COMPRESSION_ENGINE_GHOSTSCRIPT,
+})
 
 # 150 DPI は一般的な業務 PDF に対して保守的で扱いやすい既定値であり、
 # 画面上の可読性を大きく崩さずに画像サイズを下げやすい。
@@ -31,6 +37,24 @@ PDF_LOSSLESS_OPTIONS_DEFAULT: dict[str, bool] = {
     "remove_unreferenced": True,
     "clean_metadata": False,
 }
+
+PDF_GHOSTSCRIPT_PRESET_SCREEN = "screen"
+PDF_GHOSTSCRIPT_PRESET_EBOOK = "ebook"
+PDF_GHOSTSCRIPT_PRESET_PRINTER = "printer"
+PDF_GHOSTSCRIPT_PRESET_PREPRESS = "prepress"
+PDF_GHOSTSCRIPT_PRESET_DEFAULT_PROFILE = "default"
+PDF_GHOSTSCRIPT_PRESET_CUSTOM = "custom"
+PDF_GHOSTSCRIPT_PRESETS: tuple[str, ...] = (
+    PDF_GHOSTSCRIPT_PRESET_SCREEN,
+    PDF_GHOSTSCRIPT_PRESET_EBOOK,
+    PDF_GHOSTSCRIPT_PRESET_PRINTER,
+    PDF_GHOSTSCRIPT_PRESET_PREPRESS,
+    PDF_GHOSTSCRIPT_PRESET_DEFAULT_PROFILE,
+    PDF_GHOSTSCRIPT_PRESET_CUSTOM,
+)
+PDF_GHOSTSCRIPT_PRESET_DEFAULT = PDF_GHOSTSCRIPT_PRESET_EBOOK
+PDF_GHOSTSCRIPT_CUSTOM_DPI_DEFAULT = PDF_LOSSY_DPI_DEFAULT
+PDF_GHOSTSCRIPT_POSTPROCESS_DEFAULT = False
 
 # ZIP の再帰深度を制限するのは、異常に深いネストや悪意あるアーカイブによって
 # バッチ処理が無制限探索になるのを防ぐためである。

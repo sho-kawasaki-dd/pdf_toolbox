@@ -12,13 +12,21 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from model.compress.settings import (
+    PDF_ALLOWED_ENGINES,
     PDF_ALLOWED_MODES,
+    PDF_COMPRESSION_ENGINE_NATIVE,
+    PDF_GHOSTSCRIPT_CUSTOM_DPI_DEFAULT,
+    PDF_GHOSTSCRIPT_POSTPROCESS_DEFAULT,
+    PDF_GHOSTSCRIPT_PRESETS,
+    PDF_GHOSTSCRIPT_PRESET_CUSTOM,
+    PDF_GHOSTSCRIPT_PRESET_DEFAULT,
     PDF_LOSSLESS_OPTIONS_DEFAULT,
     PDF_LOSSY_DPI_DEFAULT,
     PDF_LOSSY_JPEG_QUALITY_DEFAULT,
     PDF_LOSSY_PNG_QUALITY_DEFAULT,
     PNGQUANT_DEFAULT_SPEED,
 )
+from model.external_tools import is_ghostscript_available
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,12 +73,17 @@ class CompressionSession:
         # ワーカーメッセージへ流す際、Path より扱いやすいためである。
         self.input_paths: list[str] = []
         self.output_dir: str | None = None
+        self.engine = PDF_COMPRESSION_ENGINE_NATIVE
         self.mode = "both"
         self.lossy_dpi = PDF_LOSSY_DPI_DEFAULT
         self.jpeg_quality = PDF_LOSSY_JPEG_QUALITY_DEFAULT
         self.png_quality = PDF_LOSSY_PNG_QUALITY_DEFAULT
         self.pngquant_speed = PNGQUANT_DEFAULT_SPEED
         self.lossless_options: dict[str, bool] = dict(PDF_LOSSLESS_OPTIONS_DEFAULT)
+        self.ghostscript_preset = PDF_GHOSTSCRIPT_PRESET_DEFAULT
+        self.ghostscript_custom_dpi = PDF_GHOSTSCRIPT_CUSTOM_DPI_DEFAULT
+        self.ghostscript_use_pikepdf_postprocess = PDF_GHOSTSCRIPT_POSTPROCESS_DEFAULT
+        self.ghostscript_available = is_ghostscript_available()
         self.collision_policy = "numbering"
 
         self.total_items = 0
@@ -114,6 +127,12 @@ class CompressionSession:
             raise ValueError(f"Unsupported mode: {mode}")
         self.mode = mode
 
+    def set_engine(self, engine: str) -> None:
+        """圧縮エンジンを設定する。"""
+        if engine not in PDF_ALLOWED_ENGINES:
+            raise ValueError(f"Unsupported compression engine: {engine}")
+        self.engine = engine
+
     def set_lossy_dpi(self, dpi: int) -> None:
         """非可逆圧縮時の目標 DPI を設定する。
 
@@ -140,6 +159,31 @@ class CompressionSession:
         if not 1 <= speed <= 11:
             raise ValueError("pngquant speed must be between 1 and 11")
         self.pngquant_speed = speed
+
+    def set_ghostscript_preset(self, preset: str) -> None:
+        """Ghostscript プリセットを設定する。"""
+        if preset not in PDF_GHOSTSCRIPT_PRESETS:
+            raise ValueError(f"Unsupported Ghostscript preset: {preset}")
+        self.ghostscript_preset = preset
+
+    def set_ghostscript_custom_dpi(self, dpi: int) -> None:
+        """Ghostscript カスタム DPI を設定する。"""
+        if dpi <= 0:
+            raise ValueError("Ghostscript DPI must be positive")
+        self.ghostscript_custom_dpi = dpi
+
+    def set_ghostscript_postprocess_enabled(self, enabled: bool) -> None:
+        """Ghostscript 後段の pikepdf 実行有無を設定する。"""
+        self.ghostscript_use_pikepdf_postprocess = bool(enabled)
+
+    def refresh_external_tool_state(self) -> None:
+        """外部ツール利用可否を再取得する。"""
+        self.ghostscript_available = is_ghostscript_available()
+
+    @property
+    def ghostscript_uses_custom_dpi(self) -> bool:
+        """現在の Ghostscript 設定がカスタム DPI 入力を使うかを返す。"""
+        return self.ghostscript_preset == PDF_GHOSTSCRIPT_PRESET_CUSTOM
 
     def update_lossless_options(self, **options: bool) -> None:
         """pikepdf に対応するブール設定を更新する。

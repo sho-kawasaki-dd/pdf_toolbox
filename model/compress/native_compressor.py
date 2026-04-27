@@ -17,6 +17,7 @@ from typing import Any, cast
 
 from PIL import Image, ImageCms
 
+from model.external_tools import is_pngquant_available as external_pngquant_available, resolve_pngquant_executable
 from model.compress.settings import (
     PDF_ALLOWED_MODES,
     PDF_LOSSLESS_OPTIONS_DEFAULT,
@@ -105,7 +106,7 @@ def is_pngquant_available() -> bool:
     PNG 圧縮では pngquant を優先したい一方、Python 依存だけが入っている環境でも
     機能自体は止めない必要があるため、この判定を入口に持っている。
     """
-    return shutil.which("pngquant") is not None
+    return external_pngquant_available()
 
 
 def validate_pdf_file(file_path: str | Path) -> bool:
@@ -297,6 +298,11 @@ def _compress_png_with_pngquant(png_bytes: bytes, quality: int, speed: int) -> b
     一時ファイルを介した round-trip になる。シェル依存の処理も持ち込まずに済む。
     """
     pngquant_executable = shutil.which("pngquant")
+    if pngquant_executable is None:
+        resolved_pngquant = resolve_pngquant_executable()
+        if resolved_pngquant is not None:
+            pngquant_executable = str(resolved_pngquant.path)
+
     if pngquant_executable is None:
         raise RuntimeError("pngquant not found")
 
