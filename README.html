@@ -170,15 +170,15 @@ href="docs/release_note.md">docs/release_note.md</a></li>
 秒表示された後にメインウィンドウへ切り替わります。</p>
 <h2 id="最短で起動する">最短で起動する</h2>
 <ol type="1">
-<li><p>Python を用意します。 <code>pyproject.toml</code> の設定は
-<code>&gt;=3.14</code> です。</p></li>
-<li><p>任意の仮想環境を有効化します。</p></li>
-<li><p>依存関係をインストールします。</p>
+<li><p>Python 3.14 以上と <code>uv</code> を用意します。
+<code>pyproject.toml</code> の設定は <code>&gt;=3.14</code>
+です。</p></li>
+<li><p>リポジトリ直下で依存関係を同期します。</p>
 <div class="sourceCode" id="cb1"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="at">-U</span> pyside6 pillow pymupdf pikepdf</span></code></pre></div></li>
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>  <span class="ex">uv</span> sync</span></code></pre></div></li>
 <li><p>アプリを起動します。</p>
 <div class="sourceCode" id="cb2"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ex">python</span> main.py</span></code></pre></div></li>
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>  <span class="ex">uv</span> run python main.py</span></code></pre></div></li>
 <li><p>起動確認を行います。</p>
 <ul>
 <li>スプラッシュ画面が表示される</li>
@@ -257,9 +257,9 @@ href="LICENSE">LICENSE</a> を参照してください。</p>
 <h2 id="windows-で実行ファイルを作成する">Windows
 で実行ファイルを作成する</h2>
 <ol type="1">
-<li><p>仮想環境を有効化し、必要パッケージを入れます。</p>
+<li><p>リポジトリ直下で依存関係を同期します。</p>
 <div class="sourceCode" id="cb3"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="at">-U</span> pyside6 pillow pymupdf pikepdf pyinstaller</span></code></pre></div></li>
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>  <span class="ex">uv</span> sync</span></code></pre></div></li>
 <li><p>PowerShell からビルドスクリプトを実行します。</p>
 <div class="sourceCode" id="cb4"><pre
 class="sourceCode powershell"><code class="sourceCode powershell"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="op">.</span>\scripts\build-exe<span class="op">.</span><span class="fu">ps1</span></span></code></pre></div></li>
