@@ -53,6 +53,7 @@ class MergeUiState:
     can_execute: bool = False
     can_back_home: bool = True
     is_running: bool = False
+    can_clear_inputs: bool = False
 
 
 class MergeInputList(QListWidget):
@@ -201,6 +202,10 @@ class MergeView(QWidget):
         title_box.addWidget(title)
         title_box.addWidget(subtitle)
         header.addLayout(title_box, stretch=1)
+
+        self.btn_clear_inputs = QPushButton("クリーンアップ")
+        self.btn_clear_inputs.setMinimumHeight(40)
+        header.addWidget(self.btn_clear_inputs, stretch=0)
         root.addLayout(header)
 
         self.inputs_group = QGroupBox("入力PDF")
@@ -282,6 +287,7 @@ class MergeView(QWidget):
         self.btn_move_down.clicked.connect(presenter.move_selected_down)
         self.btn_choose_output.clicked.connect(presenter.choose_output_file)
         self.btn_execute.clicked.connect(presenter.execute_merge)
+        self.btn_clear_inputs.clicked.connect(presenter.clear_inputs)
         self.input_list.paths_dropped.connect(presenter.handle_dropped_paths)
         self.input_list.order_changed.connect(presenter.reorder_inputs)
         self.input_list.selection_paths_changed.connect(presenter.set_selected_inputs)
@@ -296,6 +302,7 @@ class MergeView(QWidget):
         self.btn_add_pdf.setEnabled(state.can_add_inputs)
         self.btn_choose_output.setEnabled(state.can_choose_output)
         self.btn_execute.setEnabled(state.can_execute)
+        self.btn_clear_inputs.setEnabled(state.can_clear_inputs)
         self.txt_output_path.setText(state.output_path_text)
         self.progress_bar.setValue(state.progress_value)
         self.lbl_progress.setText(state.progress_text)

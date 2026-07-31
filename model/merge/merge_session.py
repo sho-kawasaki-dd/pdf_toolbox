@@ -110,6 +110,12 @@ class MergeSession:
         """出力先ファイルを設定する。"""
         self.output_path = str(Path(path)) if path else None
 
+    def clear_all_inputs(self) -> None:
+        """入力一覧・選択状態・出力先設定をすべて初期状態へ戻す。"""
+        self.input_paths = []
+        self.selected_paths = []
+        self.output_path = None
+
     def has_active_session(self) -> bool:
         """入力または保存先が設定されていれば作業中セッションとみなす。"""
         return bool(self.input_paths or self.output_path)

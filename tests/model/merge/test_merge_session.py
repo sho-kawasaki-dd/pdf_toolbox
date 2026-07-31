@@ -87,3 +87,19 @@ def test_set_output_path_and_active_session_flags(tmp_path: Path) -> None:
 
     assert session.output_path == str(output_path)
     assert session.has_active_session() is True
+
+
+def test_clear_all_inputs_resets_inputs_selection_and_output(tmp_path: Path) -> None:
+    session = MergeSession()
+    first = tmp_path / "first.pdf"
+    second = tmp_path / "second.pdf"
+    session.add_inputs([str(first), str(second)])
+    session.set_selected_paths([str(second)])
+    session.set_output_path(str(tmp_path / "merged.pdf"))
+
+    session.clear_all_inputs()
+
+    assert session.input_paths == []
+    assert session.selected_paths == []
+    assert session.output_path is None
+    assert session.has_active_session() is False

@@ -350,6 +350,57 @@ class TestMergePresenter:
 
         view.show_info.assert_called_once()
 
+    def test_clear_inputs_resets_inputs_selection_and_output(self, sample_pdf: Path, tmp_path: Path) -> None:
+        view = _make_mock_view()
+        presenter = MergePresenter(view)
+        presenter._session.add_inputs([str(sample_pdf)])
+        presenter._session.set_output_path(str(tmp_path / "merged.pdf"))
+        view.reset_mock()
+
+        presenter.clear_inputs()
+
+        view.ask_yes_no.assert_called_once()
+        state = view.update_merge_ui.call_args[0][0]
+        assert state.input_items == []
+        assert state.output_path_text == "結合後PDFの保存先を選択してください"
+        assert state.can_execute is False
+
+    def test_clear_inputs_cancelled_keeps_state(self, sample_pdf: Path) -> None:
+        view = _make_mock_view()
+        view.ask_yes_no.return_value = False
+        presenter = MergePresenter(view)
+        presenter._session.add_inputs([str(sample_pdf)])
+        view.reset_mock()
+
+        presenter.clear_inputs()
+
+        view.ask_yes_no.assert_called_once()
+        assert presenter._session.input_paths == [str(sample_pdf)]
+
+    def test_clear_inputs_blocked_while_running(self, sample_pdf: Path) -> None:
+        view = _make_mock_view()
+        presenter = MergePresenter(view)
+        presenter._session.add_inputs([str(sample_pdf)])
+        presenter._session.begin_execution()
+        presenter._merge_processor = SimpleNamespace(is_merging=True)
+        view.reset_mock()
+
+        presenter.clear_inputs()
+
+        view.show_info.assert_called_once()
+        view.ask_yes_no.assert_not_called()
+        assert presenter._session.input_paths == [str(sample_pdf)]
+
+    def test_clear_inputs_noop_when_nothing_to_clear(self) -> None:
+        view = _make_mock_view()
+        presenter = MergePresenter(view)
+        view.reset_mock()
+
+        presenter.clear_inputs()
+
+        view.ask_yes_no.assert_not_called()
+        view.update_merge_ui.assert_not_called()
+
     def test_on_closing_destroys_window_when_idle(self) -> None:
         view = _make_mock_view()
         presenter = MergePresenter(view)

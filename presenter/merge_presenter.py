@@ -87,6 +87,25 @@ class MergePresenter:
             self._reset_runtime_feedback()
             self._refresh_ui()
 
+    def clear_inputs(self) -> None:
+        """確認後、入力一覧・選択状態・出力先設定をすべてクリアする。"""
+        if self._merge_processor.is_merging:
+            self._view.show_info("実行中", "結合処理の実行中は入力を変更できません。")
+            return
+
+        if not self._session.has_active_session():
+            return
+
+        if not self._view.ask_yes_no(
+            "クリーンアップ確認",
+            "入力PDF一覧と保存先設定をすべてクリアします。よろしいですか？",
+        ):
+            return
+
+        self._session.clear_all_inputs()
+        self._reset_runtime_feedback()
+        self._refresh_ui()
+
     def choose_output_file(self) -> None:
         if self._merge_processor.is_merging:
             self._view.show_info("実行中", "結合処理の実行中は保存先を変更できません。")
@@ -395,4 +414,5 @@ class MergePresenter:
             can_execute=not self._session.is_running and bool(self._session.input_paths) and bool(self._session.output_path),
             can_back_home=not self._session.is_running,
             is_running=self._session.is_running,
+            can_clear_inputs=not self._session.is_running and self._session.has_active_session(),
         )
