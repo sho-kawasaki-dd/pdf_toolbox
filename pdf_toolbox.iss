@@ -1,6 +1,6 @@
 #define MyAppName "PDF Toolbox"
 #ifndef MyAppVersion
-#define MyAppVersion "1.2.0"
+#define MyAppVersion "1.2.2"
 #endif
 #define MyAppPublisher "Kawasaki Sho"
 #define MyAppExeName "PDFToolbox.exe"
